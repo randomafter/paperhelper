@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: history-creation-backend
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/history_creation?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+# JWT
+jwt:
+  secret: history-creation-jwt-secret-key-min-256-bits-for-hs256
+  expiration-ms: 86400000
