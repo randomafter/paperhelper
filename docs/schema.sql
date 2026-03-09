@@ -18,17 +18,18 @@ CREATE TABLE IF NOT EXISTS `user` (
   `username` VARCHAR(64) NOT NULL,
   `password` VARCHAR(128) NOT NULL COMMENT 'SHA256或BCrypt',
   `email` VARCHAR(128) DEFAULT NULL,
-  `phone` VARCHAR(20) DEFAULT NULL,
   `nickname` VARCHAR(64) DEFAULT NULL,
+  `intro` VARCHAR(200) DEFAULT NULL COMMENT '个人简介',
   `avatar` VARCHAR(512) DEFAULT NULL,
   `role_id` BIGINT NOT NULL DEFAULT 2 COMMENT '1=ADMIN 2=CREATOR',
   `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `security_question` VARCHAR(255) NOT NULL COMMENT '安全问题',
+  `security_answer` VARCHAR(255) NOT NULL COMMENT '安全答案',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
   UNIQUE KEY `uk_email` (`email`),
-  UNIQUE KEY `uk_phone` (`phone`),
   KEY `idx_role` (`role_id`),
   CONSTRAINT `fk_user_role` FOREIGN KEY (`role_id`) REFERENCES `role` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户';
@@ -82,6 +83,20 @@ CREATE TABLE IF NOT EXISTS `material_tag` (
   CONSTRAINT `fk_mt_material` FOREIGN KEY (`material_id`) REFERENCES `material` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_mt_tag` FOREIGN KEY (`tag_id`) REFERENCES `tag` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='素材标签关联';
+
+-- 素材收藏表
+CREATE TABLE IF NOT EXISTS `material_favorite` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT NOT NULL,
+  `material_id` BIGINT NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_material` (`user_id`, `material_id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_material` (`material_id`),
+  CONSTRAINT `fk_favorite_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_favorite_material` FOREIGN KEY (`material_id`) REFERENCES `material` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='素材收藏';
 
 -- 创作作品表（工作台）
 CREATE TABLE IF NOT EXISTS `creation_work` (

@@ -13,7 +13,9 @@ public class RegisterRequest {
     @Size(min = 6, max = 32)
     private String password;
     private String email;
-    private String phone;
     private String nickname;
-    private String verificationCode; // 可选，Mock 时可忽略
+    @NotBlank(message = "安全问题不能为空")
+    private String securityQuestion;
+    @NotBlank(message = "安全答案不能为空")
+    private String securityAnswer;
 }

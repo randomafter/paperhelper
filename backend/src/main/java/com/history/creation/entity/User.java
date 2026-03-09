@@ -16,11 +16,13 @@ public class User {
     private String username;
     private String password;
     private String email;
-    private String phone;
     private String nickname;
+    private String intro;
     private String avatar;
     private Long roleId;
     private Boolean enabled;
+    private String securityQuestion;
+    private String securityAnswer;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

@@ -8,6 +8,8 @@
         <input v-model="form.password" type="password" placeholder="密码（至少6位）" required minlength="6" />
         <input v-model="form.nickname" type="text" placeholder="昵称（可选）" />
         <input v-model="form.email" type="email" placeholder="邮箱（可选）" />
+        <input v-model="form.securityQuestion" type="text" placeholder="安全问题（如：我母亲的名字？）" required />
+        <input v-model="form.securityAnswer" type="text" placeholder="安全答案" required />
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">注册</button>
       </form>
@@ -26,7 +28,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const error = ref('')
-const form = reactive({ username: '', password: '', nickname: '', email: '' })
+const form = reactive({ username: '', password: '', nickname: '', email: '', securityQuestion: '', securityAnswer: '' })
 
 async function onSubmit() {
   error.value = ''

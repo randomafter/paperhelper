@@ -13,6 +13,7 @@ com\history\creation\entity\Role.class
 com\history\creation\dto\LoginRequest.class
 com\history\creation\security\JwtProperties.class
 com\history\creation\controller\AuthController.class
+com\history\creation\dto\ChangePasswordRequest.class
 com\history\creation\controller\UserController.class
 com\history\creation\HistoryCreationApplication.class
 com\history\creation\entity\User.class

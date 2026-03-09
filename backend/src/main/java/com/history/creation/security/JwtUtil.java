@@ -40,6 +40,10 @@ public class JwtUtil {
         return parseToken(token).get("userId", Long.class);
     }
 
+    public String getUsernameFromToken(String token) {
+        return parseToken(token).getSubject();
+    }
+
     public String getRoleFromToken(String token) {
         return parseToken(token).get("role", String.class);
     }

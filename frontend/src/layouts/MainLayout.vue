@@ -4,6 +4,8 @@
       <router-link to="/" class="logo">历史特色创作平台</router-link>
       <nav>
         <router-link to="/">首页</router-link>
+        <router-link to="/materials">素材库</router-link>
+        <router-link v-if="isAdmin" to="/admin/materials">素材管理</router-link>
         <router-link to="/profile">个人中心</router-link>
         <button class="logout" @click="logout">退出</button>
       </nav>
@@ -17,9 +19,12 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { computed } from 'vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+const isAdmin = computed(() => auth.user?.role === 'ADMIN')
 
 function logout() {
   auth.logout()

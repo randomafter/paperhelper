@@ -9,7 +9,12 @@
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">登录</button>
       </form>
-      <p class="link">没有账号？<router-link to="/register">注册</router-link></p>
+      <p class="link">
+        没有账号？<router-link to="/register">注册</router-link>
+      </p>
+      <p class="link small">
+        忘记密码？<router-link to="/forgot-password">点击找回</router-link>
+      </p>
     </div>
   </div>
 </template>
@@ -89,4 +94,5 @@ async function onSubmit() {
 .error { color: #e94560; font-size: 0.9rem; margin: -0.5rem 0 0.5rem; }
 .link { margin-top: 1rem; color: #aaa; }
 .link a { color: #e94560; }
+.link.small { font-size: 0.85rem; opacity: 0.85; }
 </style>

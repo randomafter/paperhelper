@@ -3,6 +3,7 @@ D:\work\paperhelper\backend\src\main\java\com\history\creation\entity\Role.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\controller\AuthController.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\security\JwtAuthFilter.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\dto\RegisterRequest.java
+D:\work\paperhelper\backend\src\main\java\com\history\creation\dto\ChangePasswordRequest.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\service\UserService.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\security\JwtUtil.java
 D:\work\paperhelper\backend\src\main\java\com\history\creation\config\GlobalExceptionHandler.java

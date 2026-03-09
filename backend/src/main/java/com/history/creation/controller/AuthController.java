@@ -6,10 +6,9 @@ import com.history.creation.dto.LoginRequest;
 import com.history.creation.dto.RegisterRequest;
 import com.history.creation.service.UserService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -38,6 +37,36 @@ public class AuthController {
             return Result.ok(resp);
         } catch (RuntimeException e) {
             return Result.fail(401, e.getMessage());
+        }
+    }
+
+    @GetMapping("/security-question")
+    public Result<?> getSecurityQuestion(@RequestParam String username) {
+        try {
+            String question = userService.getSecurityQuestion(username);
+            return Result.ok(question);
+        } catch (RuntimeException e) {
+            return Result.fail(400, e.getMessage());
+        }
+    }
+
+    @PostMapping("/verify-answer")
+    public Result<?> verifySecurityAnswer(@RequestBody Map<String, String> req) {
+        try {
+            userService.verifySecurityAnswer(req.get("username"), req.get("answer"));
+            return Result.ok("答案正确");
+        } catch (RuntimeException e) {
+            return Result.fail(400, e.getMessage());
+        }
+    }
+
+    @PostMapping("/reset-password-by-answer")
+    public Result<?> resetPasswordByAnswer(@RequestBody Map<String, String> req) {
+        try {
+            userService.resetPasswordByAnswer(req.get("username"), req.get("answer"), req.get("newPassword"));
+            return Result.ok("密码重置成功");
+        } catch (RuntimeException e) {
+            return Result.fail(400, e.getMessage());
         }
     }
 }
