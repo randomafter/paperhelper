@@ -9,20 +9,9 @@
     </div>
 
     <div class="search-bar">
-      <select v-model="searchParams.dynasty" @change="loadMaterials">
-        <option value="">全部朝代</option>
-        <option value="汉">汉</option>
-        <option value="唐">唐</option>
-        <option value="宋">宋</option>
-        <option value="明">明</option>
-      </select>
-      <select v-model="searchParams.category" @change="loadMaterials">
-        <option value="">全部分类</option>
-        <option value="制度">制度</option>
-        <option value="文化">文化</option>
-        <option value="服饰">服饰</option>
-        <option value="语言">语言</option>
-        <option value="战争">战争</option>
+      <select v-model="searchParams.category" @change="loadMaterials" class="filter-select">
+        <option value="">全部类型</option>
+        <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
       </select>
       <input v-model="searchParams.keyword" type="text" placeholder="搜索关键词" @keyup.enter="loadMaterials" />
       <button @click="loadMaterials">搜索</button>
@@ -35,7 +24,6 @@
         <thead>
           <tr>
             <th>ID</th>
-            <th>朝代</th>
             <th>分类</th>
             <th>标题</th>
             <th>标签</th>
@@ -46,7 +34,6 @@
         <tbody>
           <tr v-for="material in materials" :key="material.id">
             <td>{{ material.id }}</td>
-            <td><span class="dynasty-tag">{{ material.dynasty }}</span></td>
             <td><span class="category-tag">{{ material.category }}</span></td>
             <td class="title-cell">{{ material.title }}</td>
             <td>
@@ -74,24 +61,10 @@
         <h2>{{ showEditModal ? '编辑素材' : '新增素材' }}</h2>
         <form @submit.prevent="saveMaterial">
           <div class="form-group">
-            <label>朝代 *</label>
-            <select v-model="form.dynasty" required>
-              <option value="">请选择朝代</option>
-              <option value="汉">汉</option>
-              <option value="唐">唐</option>
-              <option value="宋">宋</option>
-              <option value="明">明</option>
-            </select>
-          </div>
-          <div class="form-group">
             <label>分类 *</label>
             <select v-model="form.category" required>
               <option value="">请选择分类</option>
-              <option value="制度">制度</option>
-              <option value="文化">文化</option>
-              <option value="服饰">服饰</option>
-              <option value="语言">语言</option>
-              <option value="战争">战争</option>
+              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -101,10 +74,6 @@
           <div class="form-group">
             <label>内容 *</label>
             <textarea v-model="form.content" rows="10" placeholder="请输入素材内容" required></textarea>
-          </div>
-          <div class="form-group">
-            <label>来源链接</label>
-            <input v-model="form.sourceUrl" type="url" placeholder="请输入来源链接" />
           </div>
           <div class="form-group">
             <label>标签（多个标签用逗号分隔）</label>
@@ -165,8 +134,22 @@ const editId = ref(null)
 const tagsInput = ref('')
 const importFile = ref(null)
 
+const categories = [
+  '历史沉淀',
+  '传统民俗',
+  '服饰装扮',
+  '行业手艺',
+  '宗教信仰',
+  '兵器武林',
+  '饮食文化',
+  '玉石珍宝',
+  '传说典故',
+  '科技文明',
+  '五行异象',
+  '其他',
+]
+
 const searchParams = reactive({
-  dynasty: '',
   category: '',
   keyword: '',
   page: 1,
@@ -174,11 +157,9 @@ const searchParams = reactive({
 })
 
 const form = reactive({
-  dynasty: '',
   category: '',
   title: '',
   content: '',
-  sourceUrl: ''
 })
 
 async function loadMaterials() {
@@ -214,11 +195,9 @@ function nextPage() {
 
 function editMaterial(material) {
   editId.value = material.id
-  form.dynasty = material.dynasty
   form.category = material.category
   form.title = material.title
   form.content = material.content
-  form.sourceUrl = material.sourceUrl || ''
   tagsInput.value = material.tags ? material.tags.join(',') : ''
   showEditModal.value = true
 }
@@ -262,11 +241,9 @@ function closeModal() {
   showCreateModal.value = false
   showEditModal.value = false
   editId.value = null
-  form.dynasty = ''
   form.category = ''
   form.title = ''
   form.content = ''
-  form.sourceUrl = ''
   tagsInput.value = ''
 }
 
@@ -378,15 +355,15 @@ onMounted(() => {
 .search-bar select,
 .search-bar input {
   padding: 0.75rem 1rem;
-  border: 1px solid #444;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: var(--bg-input);
+  color: var(--text-main);
   font-size: 1rem;
 }
 
 .search-bar select {
-  min-width: 120px;
+  min-width: 160px;
 }
 
 .search-bar input {
@@ -398,14 +375,14 @@ onMounted(() => {
   padding: 0.75rem 1.5rem;
   border: none;
   border-radius: 8px;
-  background: #e94560;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
   color: #fff;
   font-size: 1rem;
   cursor: pointer;
 }
 
 .materials-table {
-  background: rgba(255,255,255,0.06);
+  background: var(--bg-card);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -419,17 +396,17 @@ onMounted(() => {
 .materials-table td {
   padding: 1rem;
   text-align: left;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--border);
 }
 
 .materials-table th {
-  background: rgba(255,255,255,0.1);
-  color: #e8e8e8;
+  background: var(--bg-input);
+  color: var(--text-muted);
   font-weight: 600;
 }
 
 .materials-table td {
-  color: #ccc;
+  color: var(--text-main);
 }
 
 .title-cell {
@@ -439,7 +416,6 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.dynasty-tag,
 .category-tag {
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
@@ -447,21 +423,16 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.dynasty-tag {
-  background: #e94560;
-  color: #fff;
-}
-
 .category-tag {
-  background: #0f3460;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
   color: #fff;
 }
 
 .tag {
   display: inline-block;
   padding: 0.25rem 0.75rem;
-  background: rgba(233, 69, 96, 0.1);
-  color: #e94560;
+  background: var(--tag-bg);
+  color: var(--text-sub);
   border-radius: 4px;
   font-size: 0.85rem;
   margin-right: 0.5rem;

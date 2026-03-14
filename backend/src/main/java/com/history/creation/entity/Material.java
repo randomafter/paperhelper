@@ -13,11 +13,17 @@ import java.util.List;
 public class Material {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String dynasty;
     private String category;
     private String title;
     private String content;
-    private String sourceUrl;
+    /**
+     * 若为用户投稿素材，记录提交人ID；系统预置素材则为null
+     */
+    private Long sourceUserId;
+    /**
+     * PUBLISHED=正式; PENDING=待审核; REJECTED=已驳回
+     */
+    private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

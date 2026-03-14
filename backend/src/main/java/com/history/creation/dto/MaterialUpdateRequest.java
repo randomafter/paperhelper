@@ -11,9 +11,6 @@ public class MaterialUpdateRequest {
     @NotNull(message = "素材ID不能为空")
     private Long id;
 
-    @NotBlank(message = "朝代不能为空")
-    private String dynasty;
-
     @NotBlank(message = "分类不能为空")
     private String category;
 
@@ -22,8 +19,6 @@ public class MaterialUpdateRequest {
 
     @NotBlank(message = "内容不能为空")
     private String content;
-
-    private String sourceUrl;
 
     private List<String> tags;
 }

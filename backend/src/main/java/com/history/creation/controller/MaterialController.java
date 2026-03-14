@@ -47,10 +47,10 @@ public class MaterialController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
     public Result<MaterialDTO> createMaterial(@Valid @RequestBody MaterialCreateRequest req) {
         try {
-            MaterialDTO result = materialService.createMaterial(req);
+            Long userId = SecurityUtils.getCurrentUserId();
+            MaterialDTO result = materialService.createMaterial(req, userId);
             return Result.ok(result);
         } catch (RuntimeException e) {
             return Result.fail(400, e.getMessage());
@@ -95,6 +95,17 @@ public class MaterialController {
         Long userId = SecurityUtils.getCurrentUserId();
         List<MaterialDTO> result = materialService.getFavorites(userId);
         return Result.ok(result);
+    }
+
+    @PostMapping("/{id}/favorite/group")
+    public Result<?> updateFavoriteGroup(@PathVariable Long id, @RequestParam String groupName) {
+        try {
+            Long userId = SecurityUtils.getCurrentUserId();
+            materialService.updateFavoriteGroup(userId, id, groupName);
+            return Result.ok("更新成功");
+        } catch (RuntimeException e) {
+            return Result.fail(400, e.getMessage());
+        }
     }
 
     @PostMapping("/import")

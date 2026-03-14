@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class MaterialSearchRequest {
-    private String dynasty;
     private String category;
     private String keyword;
     private String tag;

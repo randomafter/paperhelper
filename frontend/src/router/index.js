@@ -13,8 +13,12 @@ const routes = [
       { path: '', name: 'Home', component: () => import('../views/Home.vue') },
       { path: 'profile', name: 'Profile', component: () => import('../views/Profile.vue') },
       { path: 'materials', name: 'Materials', component: () => import('../views/Materials.vue') },
+      { path: 'favorites', name: 'Favorites', component: () => import('../views/Favorites.vue') },
+      { path: 'workspace', name: 'Workspace', component: () => import('../views/Workspace.vue') },
       { path: 'materials/:id', name: 'MaterialDetail', component: () => import('../views/MaterialDetail.vue') },
       { path: 'admin/materials', name: 'AdminMaterials', component: () => import('../views/AdminMaterials.vue'), meta: { admin: true } },
+      { path: 'admin/review', name: 'AdminReview', component: () => import('../views/AdminReview.vue'), meta: { admin: true } },
+      { path: 'admin/feedback', name: 'AdminFeedback', component: () => import('../views/AdminFeedback.vue'), meta: { admin: true } },
     ],
   },
 ]

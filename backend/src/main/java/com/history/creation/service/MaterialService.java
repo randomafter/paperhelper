@@ -32,27 +32,39 @@ public class MaterialService {
     private final TagMapper tagMapper;
     private final MaterialTagMapper materialTagMapper;
     private final MaterialFavoriteMapper materialFavoriteMapper;
+    private final NotificationService notificationService;
 
     public MaterialService(MaterialMapper materialMapper, TagMapper tagMapper,
-                       MaterialTagMapper materialTagMapper, MaterialFavoriteMapper materialFavoriteMapper) {
+                       MaterialTagMapper materialTagMapper, MaterialFavoriteMapper materialFavoriteMapper,
+                       NotificationService notificationService) {
         this.materialMapper = materialMapper;
         this.tagMapper = tagMapper;
         this.materialTagMapper = materialTagMapper;
         this.materialFavoriteMapper = materialFavoriteMapper;
+        this.notificationService = notificationService;
     }
 
     public Page<MaterialDTO> searchMaterials(MaterialSearchRequest req, Long userId) {
         LambdaQueryWrapper<Material> wrapper = new LambdaQueryWrapper<>();
         
-        if (req.getDynasty() != null && !req.getDynasty().isEmpty()) {
-            wrapper.eq(Material::getDynasty, req.getDynasty());
-        }
+        // 检索只展示已发布内容
+        wrapper.eq(Material::getStatus, "PUBLISHED");
+
         if (req.getCategory() != null && !req.getCategory().isEmpty()) {
             wrapper.eq(Material::getCategory, req.getCategory());
         }
         if (req.getKeyword() != null && !req.getKeyword().isEmpty()) {
-            wrapper.and(w -> w.like(Material::getTitle, req.getKeyword())
-                    .or().like(Material::getContent, req.getKeyword()));
+            String kw = req.getKeyword();
+            wrapper.and(w -> w
+                    .like(Material::getTitle, kw)
+                    .or()
+                    .like(Material::getContent, kw)
+                    .or()
+                    .exists("SELECT 1 FROM material_tag mt, tag t " +
+                            "WHERE mt.material_id = material.id " +
+                            "AND mt.tag_id = t.id " +
+                            "AND t.name LIKE CONCAT('%', {0}, '%')", kw)
+            );
         }
         if (req.getTag() != null && !req.getTag().isEmpty()) {
             wrapper.exists("SELECT 1 FROM material_tag mt, tag t " +
@@ -84,13 +96,18 @@ public class MaterialService {
     }
 
     @Transactional
-    public MaterialDTO createMaterial(MaterialCreateRequest req) {
+    public MaterialDTO createMaterial(MaterialCreateRequest req, Long userId) {
         Material material = new Material();
-        material.setDynasty(req.getDynasty());
         material.setCategory(req.getCategory());
         material.setTitle(req.getTitle());
         material.setContent(req.getContent());
-        material.setSourceUrl(req.getSourceUrl());
+        // 普通用户投稿默认为待审核，管理员则直接发布
+        if (userId != null) {
+            material.setSourceUserId(userId);
+            material.setStatus("PENDING");
+        } else {
+            material.setStatus("PUBLISHED");
+        }
         materialMapper.insert(material);
         
         if (req.getTags() != null && !req.getTags().isEmpty()) {
@@ -120,11 +137,9 @@ public class MaterialService {
             throw new RuntimeException("素材不存在");
         }
         
-        material.setDynasty(req.getDynasty());
         material.setCategory(req.getCategory());
         material.setTitle(req.getTitle());
         material.setContent(req.getContent());
-        material.setSourceUrl(req.getSourceUrl());
         materialMapper.updateById(material);
         
         materialTagMapper.delete(new LambdaQueryWrapper<MaterialTag>()
@@ -177,6 +192,8 @@ public class MaterialService {
             favorite = new MaterialFavorite();
             favorite.setUserId(userId);
             favorite.setMaterialId(materialId);
+            // 默认归入“未定义”分组，后续用户可在前端调整分组
+            favorite.setGroupName("未定义");
             materialFavoriteMapper.insert(favorite);
         }
     }
@@ -191,10 +208,28 @@ public class MaterialService {
         for (MaterialFavorite favorite : favorites) {
             Material material = materialMapper.selectById(favorite.getMaterialId());
             if (material != null) {
-                result.add(convertToDTO(material, userId));
+                MaterialDTO dto = convertToDTO(material, userId);
+                dto.setFavoriteGroup(favorite.getGroupName());
+                result.add(dto);
             }
         }
         return result;
+    }
+
+    /**
+     * 更新用户单条收藏记录的分组名称
+     */
+    @Transactional
+    public void updateFavoriteGroup(Long userId, Long materialId, String groupName) {
+        MaterialFavorite favorite = materialFavoriteMapper.selectOne(
+                new LambdaQueryWrapper<MaterialFavorite>()
+                        .eq(MaterialFavorite::getUserId, userId)
+                        .eq(MaterialFavorite::getMaterialId, materialId));
+        if (favorite == null) {
+            throw new RuntimeException("尚未收藏该素材");
+        }
+        favorite.setGroupName(groupName);
+        materialFavoriteMapper.updateById(favorite);
     }
 
     public List<String> getAllTags() {
@@ -205,11 +240,11 @@ public class MaterialService {
     private MaterialDTO convertToDTO(Material material, Long userId) {
         MaterialDTO dto = new MaterialDTO();
         dto.setId(material.getId());
-        dto.setDynasty(material.getDynasty());
         dto.setCategory(material.getCategory());
         dto.setTitle(material.getTitle());
         dto.setContent(material.getContent());
-        dto.setSourceUrl(material.getSourceUrl());
+        dto.setSourceUserId(material.getSourceUserId());
+        dto.setStatus(material.getStatus());
         dto.setCreatedAt(material.getCreatedAt());
         dto.setUpdatedAt(material.getUpdatedAt());
         
@@ -253,15 +288,12 @@ public class MaterialService {
                 if (row == null) continue;
                 
                 try {
-                    String dynasty = getCellValueAsString(row.getCell(0));
-                    String category = getCellValueAsString(row.getCell(1));
-                    String title = getCellValueAsString(row.getCell(2));
-                    String content = getCellValueAsString(row.getCell(3));
-                    String sourceUrl = getCellValueAsString(row.getCell(4));
-                    String tagsStr = getCellValueAsString(row.getCell(5));
+                    String category = getCellValueAsString(row.getCell(0));
+                    String title = getCellValueAsString(row.getCell(1));
+                    String content = getCellValueAsString(row.getCell(2));
+                    String tagsStr = getCellValueAsString(row.getCell(3));
                     
-                    if (dynasty == null || dynasty.trim().isEmpty() ||
-                        category == null || category.trim().isEmpty() ||
+                    if (category == null || category.trim().isEmpty() ||
                         title == null || title.trim().isEmpty() ||
                         content == null || content.trim().isEmpty()) {
                         result.setFailCount(result.getFailCount() + 1);
@@ -270,13 +302,9 @@ public class MaterialService {
                     }
                     
                     Material material = new Material();
-                    material.setDynasty(dynasty.trim());
                     material.setCategory(category.trim());
                     material.setTitle(title.trim());
                     material.setContent(content.trim());
-                    if (sourceUrl != null && !sourceUrl.trim().isEmpty()) {
-                        material.setSourceUrl(sourceUrl.trim());
-                    }
                     materialMapper.insert(material);
                     
                     if (tagsStr != null && !tagsStr.trim().isEmpty()) {
