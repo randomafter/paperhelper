@@ -2,7 +2,7 @@ spring:
   application:
     name: history-creation-backend
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/history_creation?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://127.0.0.1:3306/history_creation?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectionCollation=utf8mb4_unicode_ci
     username: root
     password: 123456
 

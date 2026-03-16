@@ -14,6 +14,7 @@ const routes = [
       { path: 'profile', name: 'Profile', component: () => import('../views/Profile.vue') },
       { path: 'materials', name: 'Materials', component: () => import('../views/Materials.vue') },
       { path: 'favorites', name: 'Favorites', component: () => import('../views/Favorites.vue') },
+      { path: 'works', name: 'Works', component: () => import('../views/Works.vue') },
       { path: 'workspace', name: 'Workspace', component: () => import('../views/Workspace.vue') },
       { path: 'materials/:id', name: 'MaterialDetail', component: () => import('../views/MaterialDetail.vue') },
       { path: 'admin/materials', name: 'AdminMaterials', component: () => import('../views/AdminMaterials.vue'), meta: { admin: true } },
