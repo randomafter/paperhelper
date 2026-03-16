@@ -36,13 +36,18 @@
 
     <div v-else-if="viewMode === 'table'" class="works-table-wrap">
       <table class="works-table">
-        <thead><tr><th>标题</th><th style="width:160px">创建时间</th><th style="width:160px">最后修改</th><th style="width:140px">操作</th></tr></thead>
+        <thead><tr><th>标题</th><th style="width:100px">分组</th><th style="width:160px">创建时间</th><th style="width:160px">最后修改</th><th style="width:190px">操作</th></tr></thead>
         <tbody>
           <tr v-for="work in filteredWorks" :key="work.id" class="work-row" :class="{ pinned: work.lastOpenedAt }">
             <td class="title-cell"><span v-if="work.lastOpenedAt" class="pin-badge">📌</span><span class="work-title">{{ work.title || '未命名' }}</span></td>
+            <td class="group-cell"><span class="work-group-tag" :class="{ ungrouped: !work.groupName }">{{ work.groupName || '未分组' }}</span></td>
             <td class="date-cell">{{ formatDate(work.createdAt) }}</td>
             <td class="date-cell">{{ formatDate(work.updatedAt) }}</td>
-            <td class="action-cell"><button @click="openWork(work.id)" class="btn-action view">打开</button><button @click="confirmDelete(work)" class="btn-action del">删除</button></td>
+            <td class="action-cell">
+              <button @click="openWork(work.id)" class="btn-action view">打开</button>
+              <button @click.stop="openMoveGroup(work)" class="btn-action move">移组</button>
+              <button @click="confirmDelete(work)" class="btn-action del">删除</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -53,7 +58,14 @@
       <div v-for="work in filteredWorks" :key="work.id" class="work-card" :class="{ pinned: work.lastOpenedAt }" @click="openWork(work.id)">
         <div class="card-top"><span v-if="work.lastOpenedAt" class="pin-dot"></span><h3 class="card-title">{{ work.title || '未命名' }}</h3></div>
         <div class="card-preview">{{ work.content ? work.content.slice(0,80) + (work.content.length > 80 ? '...' : '') : '暂无内容' }}</div>
-        <div class="card-footer"><span class="date-label">🕐 {{ formatDate(work.updatedAt) }}</span><div class="card-actions" @click.stop><button @click="openWork(work.id)" class="btn-card open">打开</button><button @click="confirmDelete(work)" class="btn-card del">🗑</button></div></div>
+        <div class="card-footer">
+          <span class="work-group-tag" :class="{ ungrouped: !work.groupName }">{{ work.groupName || '未分组' }}</span>
+          <div class="card-actions" @click.stop>
+            <button @click="openWork(work.id)" class="btn-card open">打开</button>
+            <button @click.stop="openMoveGroup(work)" class="btn-card move">移组</button>
+            <button @click="confirmDelete(work)" class="btn-card del">🗑</button>
+          </div>
+        </div>
       </div>
       <button @click="createWorkInGroup" class="btn-add-work-card">＋ 新建作品</button>
     </div>
@@ -76,6 +88,31 @@
       <div class="confirm-modal"><div class="confirm-icon">⚠️</div><h3>确认删除分组？</h3>
         <p>分组「{{ deletingGroup }}」及其中的所有作品将被<strong>永久删除</strong>。此操作不可撤销。</p>
         <div class="confirm-actions"><button @click="deletingGroup = null" class="btn-cancel">取消</button><button @click="doDeleteGroup" :disabled="deleting" class="btn-confirm-del">{{ deleting ? '删除中...' : '确认删除' }}</button></div>
+      </div>
+    </div>
+
+    <!-- 移动分组 -->
+    <div v-if="movingWork" class="modal-overlay" @click.self="movingWork = null">
+      <div class="confirm-modal">
+        <h3>移动到分组</h3>
+        <p style="color:var(--text-sub);font-size:0.88rem;margin:0 0 1rem">当前分组：<strong>{{ movingWork.groupName || '未分组' }}</strong></p>
+        <div class="move-group-list">
+          <button
+            v-for="g in moveGroupOptions"
+            :key="g"
+            class="move-group-item"
+            :class="{ active: g === (movingWork.groupName || '未分组') }"
+            @click="doMoveGroup(g)"
+            :disabled="movingGroupLoading"
+          >
+            {{ g }}
+            <span v-if="g === (movingWork.groupName || '未分组')" class="current-mark">✓ 当前</span>
+          </button>
+        </div>
+        <p v-if="moveGroupError" class="group-op-error">{{ moveGroupError }}</p>
+        <div class="confirm-actions" style="margin-top:1rem">
+          <button @click="movingWork = null" class="btn-cancel">取消</button>
+        </div>
       </div>
     </div>
 
@@ -123,6 +160,9 @@ const showCreateGroup = ref(false)
 const newGroupName = ref('')
 const groupOpLoading = ref(false)
 const groupOpError = ref('')
+const movingWork = ref(null)
+const movingGroupLoading = ref(false)
+const moveGroupError = ref('')
 
 const groupList = computed(() => {
   const set = new Set(['全部', '未分组'])
@@ -130,6 +170,8 @@ const groupList = computed(() => {
   works.value.forEach(w => { if (w.groupName) set.add(w.groupName) })
   return Array.from(set)
 })
+
+const moveGroupOptions = computed(() => ['未分组', ...extraGroups.value])
 
 const filteredWorks = computed(() => {
   if (currentGroup.value === '全部') return works.value
@@ -196,6 +238,32 @@ function goPage(p) {
   page.value = p; loadWorks()
 }
 
+function openMoveGroup(work) {
+  moveGroupError.value = ''
+  movingWork.value = work
+}
+
+async function doMoveGroup(targetGroup) {
+  if (!movingWork.value) return
+  const groupName = targetGroup === '未分组' ? null : targetGroup
+  if (groupName === movingWork.value.groupName || (targetGroup === '未分组' && !movingWork.value.groupName)) {
+    movingWork.value = null; return
+  }
+  movingGroupLoading.value = true; moveGroupError.value = ''
+  try {
+    const res = await worksApi.updateGroup(movingWork.value.id, groupName)
+    if (res.data?.code === 200) {
+      movingWork.value.groupName = groupName
+      movingWork.value = null
+    } else {
+      moveGroupError.value = res.data?.message || '移动失败'
+    }
+  } catch(e) {
+    moveGroupError.value = e.response?.data?.message || '移动失败'
+    console.error(e)
+  } finally { movingGroupLoading.value = false }
+}
+
 function createGroup() {
   newGroupName.value = ''
   groupOpError.value = ''
@@ -230,7 +298,7 @@ function editGroupName(g) {
 }
 
 async function doEditGroup() {
-  if (!editingGroupNewName.value?.trim()) return
+    if (!editingGroupNewName.value?.trim()) return
   const newName = editingGroupNewName.value.trim()
   if (newName === editingGroup.value) { editingGroup.value = null; return }
   groupOpLoading.value = true; groupOpError.value = ''
@@ -259,13 +327,11 @@ async function doDeleteGroup() {
     const groupsRes = await workGroupsApi.list()
     const group = groupsRes.data?.data?.find(g => g.name === deletingGroup.value)
     if (!group) {
-      // 分组在DB中不存在，只清理前端状态
       works.value = works.value.filter(w => w.groupName !== deletingGroup.value)
       const idx = extraGroups.value.indexOf(deletingGroup.value)
       if (idx >= 0) extraGroups.value.splice(idx, 1)
       if (currentGroup.value === deletingGroup.value) currentGroup.value = '全部'
-      deletingGroup.value = null
-      return
+      deletingGroup.value = null; return
     }
     await workGroupsApi.delete(group.id)
     const idx = extraGroups.value.indexOf(deletingGroup.value)
@@ -291,7 +357,6 @@ onMounted(loadWorks)
 .view-toggle { display: flex; gap: 0.3rem; border: 1px solid var(--border); border-radius: 7px; padding: 0.3rem; background: var(--bg-input); }
 .view-toggle button { padding: 0.35rem 0.7rem; border: none; background: transparent; color: var(--text-muted); font-size: 1rem; cursor: pointer; border-radius: 5px; transition: all 0.2s; }
 .view-toggle button.active { background: var(--primary); color: #fff; }
-
 .tab-nav-wrapper { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--border); margin-bottom: 1.75rem; gap: 1rem; }
 .tab-nav { display: flex; overflow-x: auto; gap: 0; flex: 1; scrollbar-width: none; }
 .tab-nav::-webkit-scrollbar { display: none; }
@@ -307,17 +372,14 @@ onMounted(loadWorks)
 .group-btn.del:hover { color: #e53935; }
 .btn-add-group { padding: 0.45rem 1rem; border: 1px dashed var(--border); border-bottom: none; border-radius: 7px 7px 0 0; background: transparent; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; flex-shrink: 0; }
 .btn-add-group:hover { border-color: var(--primary); color: var(--primary); }
-
 .loading { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 5rem; color: var(--text-muted); }
 .loading-spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
 .empty { text-align: center; padding: 5rem 2rem; color: var(--text-muted); }
 .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; }
 .empty p { margin: 0 0 1.5rem; }
 .btn-new { padding: 0.65rem 1.5rem; border-radius: 9px; border: none; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; }
 .btn-new:hover { opacity: 0.88; transform: translateY(-2px); }
-
 .works-table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .works-table { width: 100%; border-collapse: collapse; }
 .works-table th { padding: 0.85rem 1rem; text-align: left; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); background: var(--bg-input); border-bottom: 1px solid var(--border); }
@@ -326,19 +388,23 @@ onMounted(loadWorks)
 .work-row { cursor: pointer; transition: background 0.15s; }
 .work-row:hover td { background: var(--bg-hover); }
 .work-row.pinned > td:nth-child(1) { border-left: 3px solid var(--primary); padding-left: calc(1rem - 3px); }
-.title-cell { display: flex; align-items: center; gap: 0.4rem; max-width: 380px; }
+.title-cell { display: flex; align-items: center; gap: 0.4rem; max-width: 340px; }
 .pin-badge { font-size: 0.82rem; flex-shrink: 0; }
 .work-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.group-cell { white-space: nowrap; }
+.work-group-tag { display: inline-block; padding: 0.12rem 0.5rem; background: var(--bg-hover); color: var(--text-sub); border-radius: 20px; font-size: 0.75rem; border: 1px solid var(--border); }
+.work-group-tag.ungrouped { color: var(--text-muted); border-style: dashed; }
 .date-cell { font-size: 0.82rem; color: var(--text-sub); white-space: nowrap; }
 .action-cell { white-space: nowrap; }
 .btn-action { padding: 0.28rem 0.75rem; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-sub); transition: all 0.2s; margin-right: 0.3rem; }
 .btn-action.view { border-color: var(--primary); color: var(--primary); }
 .btn-action.view:hover { background: var(--primary); color: #fff; }
+.btn-action.move { border-color: #43a047; color: #43a047; }
+.btn-action.move:hover { background: #43a047; color: #fff; }
 .btn-action.del { border-color: #e53935; color: #e53935; }
 .btn-action.del:hover { background: rgba(229,57,53,0.1); }
 .btn-add-work { width: 100%; padding: 0.75rem; border: 1px dashed var(--border); border-top: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
 .btn-add-work:hover { border-color: var(--primary); color: var(--primary); }
-
 .works-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1.25rem; }
 .work-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.35rem; cursor: pointer; transition: all 0.22s; display: flex; flex-direction: column; gap: 0.8rem; position: relative; overflow: hidden; }
 .work-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--primary), var(--primary-light)); opacity: 0; transition: opacity 0.2s; }
@@ -352,24 +418,23 @@ onMounted(loadWorks)
 .card-title { flex: 1; font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 0; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .card-preview { font-size: 0.82rem; color: var(--text-muted); line-height: 1.65; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; min-height: 40px; }
 .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: auto; }
-.date-label { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 0.4rem; }
 .btn-card { padding: 0.25rem 0.65rem; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; transition: all 0.2s; }
 .btn-card.open { border-color: var(--primary); color: var(--primary); }
 .btn-card.open:hover { background: var(--primary); color: #fff; }
+.btn-card.move { border-color: #43a047; color: #43a047; }
+.btn-card.move:hover { background: #43a047; color: #fff; }
 .btn-card.del { border-color: #e53935; color: #e53935; padding: 0.25rem 0.5rem; }
 .btn-card.del:hover { background: rgba(229,57,53,0.1); }
 .btn-add-work-card { grid-column: 1 / -1; padding: 2rem; border: 2px dashed var(--border); border-radius: 12px; background: transparent; color: var(--text-muted); font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
 .btn-add-work-card:hover { border-color: var(--primary); color: var(--primary); }
-
 .pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 1.5rem 0 0; }
 .page-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); cursor: pointer; font-size: 0.88rem; transition: all 0.2s; }
 .page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .page-info { font-size: 0.85rem; color: var(--text-muted); }
-
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.confirm-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 2.5rem 2rem; width: 90%; max-width: 380px; text-align: center; box-shadow: 0 16px 48px var(--shadow); }
+.confirm-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 2.5rem 2rem; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 16px 48px var(--shadow); }
 .confirm-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
 .confirm-modal h3 { margin: 0 0 0.75rem; font-size: 1.15rem; color: var(--text-main); }
 .confirm-modal p { color: var(--text-sub); font-size: 0.9rem; margin: 0 0 1.5rem; line-height: 1.6; }
@@ -381,4 +446,10 @@ onMounted(loadWorks)
 .btn-cancel:hover { border-color: var(--primary); color: var(--primary); }
 .btn-confirm-del { flex: 1; padding: 0.6rem; border-radius: 7px; border: none; background: linear-gradient(90deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
 .btn-confirm-del:disabled { opacity: 0.5; cursor: not-allowed; }
-</style> 
+.move-group-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 260px; overflow-y: auto; margin-bottom: 0.5rem; text-align: left; }
+.move-group-item { padding: 0.6rem 1rem; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main); font-size: 0.9rem; cursor: pointer; text-align: left; transition: all 0.18s; display: flex; align-items: center; justify-content: space-between; }
+.move-group-item:hover:not(:disabled) { border-color: var(--primary); background: var(--bg-hover); color: var(--primary); }
+.move-group-item.active { border-color: var(--primary); background: var(--bg-hover); color: var(--primary); font-weight: 600; }
+.move-group-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.current-mark { font-size: 0.75rem; color: var(--primary); font-weight: 700; }
+</style>
