@@ -19,9 +19,6 @@
           <button @click="searchMats" class="btn-search-sm">搜索</button>
         </div>
         <div v-if="matSource === 'favorite'" class="search-area">
-          <select v-model="favGroup" class="mat-select">
-            <option v-for="g in favGroupList" :key="g" :value="g">{{ g }}</option>
-          </select>
           <input v-model="favSearch" placeholder="在收藏中搜索..." class="mat-search" />
         </div>
         <div class="mat-loading" v-if="matLoading">加载中...</div>
@@ -101,6 +98,72 @@
         @input="startAutoSave"
       ></textarea>
     </div>
+
+    <!-- 历史助手侧边栏 -->
+    <aside class="ai-sidebar" :class="{ collapsed: aiCollapsed }">
+      <div class="ai-sidebar-header">
+        <button class="collapse-btn" @click="aiCollapsed = !aiCollapsed">{{ aiCollapsed ? '<' : '>' }}</button>
+        <span v-if="!aiCollapsed" class="sidebar-title">历史助手</span>
+      </div>
+      <template v-if="!aiCollapsed">
+        <div class="ai-tabs">
+          <button v-for="t in aiTabs" :key="t.key" :class="{ active: aiTab === t.key }" @click="aiTab = t.key">{{ t.label }}</button>
+        </div>
+
+        <!-- 时空背景 -->
+        <div v-if="aiTab === 'context'" class="ai-panel">
+          <p class="ai-desc">输入时间和地点，获取政治格局、人物、制度、服饰、物价等背景信息</p>
+          <input v-model="ctxYear" class="ai-input" placeholder="年份，如：755" />
+          <input v-model="ctxPlace" class="ai-input" placeholder="地点，如：长安" />
+          <button @click="runContext" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='context' ? '查询中...' : '🔍 查询背景' }}</button>
+        </div>
+
+        <!-- 穿越警报 -->
+        <div v-if="aiTab === 'check'" class="ai-panel">
+          <p class="ai-desc">粘贴文段，检测时代错误（食材、器物、词汇等）并给出修正建议</p>
+          <textarea v-model="checkText" class="ai-textarea" placeholder="粘贴要检查的文段..."></textarea>
+          <button @click="runCheck" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='check' ? '检测中...' : '⚠️ 检测错误' }}</button>
+          <button @click="checkText = editorContent.slice(0, 800)" class="ai-btn-ghost">引用当前文章（前800字）</button>
+        </div>
+
+        <!-- 细节查询 -->
+        <div v-if="aiTab === 'detail'" class="ai-panel">
+          <p class="ai-desc">提问历史细节，如官职俸禄、礼仪规范、建筑形制等</p>
+          <input v-model="detailQ" class="ai-input" placeholder="如：唐代七品官年俸是多少？" />
+          <button @click="runDetail" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='detail' ? '查询中...' : '📖 查询细节' }}</button>
+        </div>
+
+        <!-- 环境描写 -->
+        <div v-if="aiTab === 'scene'" class="ai-panel">
+          <p class="ai-desc">输入场景要素，生成具有文学性的历史环境描写</p>
+          <input v-model="sceneInput" class="ai-input" placeholder="如：盛唐曲江池，暮春，贵族宴饮" />
+          <select v-model="sceneStyle" class="ai-input">
+            <option value="典雅">典雅古风</option>
+            <option value="清丽">清丽婉约</option>
+            <option value="雄浑">雄浑壮阔</option>
+            <option value="写实">写实细腻</option>
+          </select>
+          <button @click="runScene" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='scene' ? '生成中...' : '✍️ 生成描写' }}</button>
+        </div>
+
+        <!-- 结果展示 -->
+        <div v-if="aiError" class="ai-error">{{ aiError }}</div>
+        <div v-if="aiResult" class="ai-result">
+          <div class="ai-result-header">
+            <span>结果</span>
+            <div class="ai-result-actions">
+              <button @click="insertAiResult" class="ai-insert-btn">插入编辑器</button>
+              <button @click="aiResult = ''; aiError = ''" class="ai-clear-btn">清除</button>
+            </div>
+          </div>
+          <pre class="ai-result-text">{{ aiResult }}</pre>
+        </div>
+        <div v-else-if="aiLoading" class="ai-loading">
+          <div class="ai-spinner"></div>
+          <span>星火思考中...</span>
+        </div>
+      </template>
+    </aside>
   </div>
 </template>
 
@@ -110,6 +173,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { materialApi } from '../api/material'
 import { worksApi } from '../api/works'
 import { useWorkspaceStore } from '../stores/workspace'
+import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -150,12 +214,6 @@ const matPageSize = 10
 const matTotalPages = computed(() => Math.ceil(matTotal.value / matPageSize) || 1)
 const favorites = ref([])
 const favSearch = ref('')
-const favGroup = ref('全部')
-const favGroupList = computed(() => {
-  const groups = new Set(['全部', '我的灵感', '未定义'])
-  favorites.value.forEach(f => { if (f.favoriteGroup) groups.add(f.favoriteGroup) })
-  return Array.from(groups)
-})
 
 const categories = [
   '历史沉淀','传统民俗','服饰装扮','行业手艺','宗教信仰',
@@ -166,14 +224,10 @@ const wordCount = computed(() => editorContent.value.replace(/\s/g,'').length)
 
 const displayMats = computed(() => {
   if (matSource.value === 'favorite') {
-    let list = favorites.value
-    if (favGroup.value !== '全部') {
-      list = list.filter(f => (f.favoriteGroup || '未定义') === favGroup.value)
-    }
     const kw = favSearch.value.trim().toLowerCase()
-    return kw ? list.filter(f =>
+    return kw ? favorites.value.filter(f =>
       f.title.toLowerCase().includes(kw) || f.content?.toLowerCase().includes(kw)
-    ) : list
+    ) : favorites.value
   }
   return searchResults.value
 })
@@ -198,31 +252,9 @@ function nextMatPage() { if (matPage.value < matTotalPages.value) { matPage.valu
 
 async function loadFavMats() {
   matLoading.value = true
-  favGroup.value = '全部'
   try {
-    const [favRes, mineRes] = await Promise.all([
-      materialApi.getFavorites(),
-      import('../api/userMaterial').then(m => m.userMaterialApi.list()).catch(() => ({ data: { code: 200, data: [] } })),
-    ])
-    const pubList = (favRes.data?.code === 200 && favRes.data?.data)
-      ? favRes.data.data.map(it => ({ ...it, favoriteGroup: it.favoriteGroup || '未定义', _source: 'public' }))
-      : []
-    const mineList = (mineRes.data?.code === 200 && mineRes.data?.data)
-      ? mineRes.data.data
-          .filter(m => m.status === 'approved')
-          .map(m => ({
-            id: `mine_${m.id}`,
-            category: m.category,
-            title: m.title,
-            content: m.content,
-            tags: m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-            favoriteGroup: '我的灵感',
-            isFavorite: true,
-            _source: 'mine',
-            _mineId: m.id,
-          }))
-      : []
-    favorites.value = [...pubList, ...mineList]
+    const res = await materialApi.getFavorites()
+    if (res.data?.code === 200 && res.data?.data) favorites.value = res.data.data
   } catch(e) { console.error(e) } finally { matLoading.value = false }
 }
 
@@ -272,6 +304,7 @@ async function saveWork() {
 }
 
 function startAutoSave() {
+  if (!workId.value) return
   // 清除已有定时器
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (countdownTimer) clearInterval(countdownTimer)
@@ -366,6 +399,126 @@ function goWorks() { router.push('/works') }
 watch(() => workspaceStore.pendingInsert, (mat) => {
   if (mat) { insertMat(mat); workspaceStore.clearPending() }
 }, { immediate: true })
+
+// ── 历史助手 ──────────────────────────────────────────────────
+const aiCollapsed = ref(false)
+const aiTab = ref('context')
+const aiTabs = [
+  { key: 'context', label: '时空' },
+  { key: 'check',   label: '警报' },
+  { key: 'detail',  label: '细节' },
+  { key: 'scene',   label: '描写' },
+]
+const aiLoading = ref(false)
+const aiResult  = ref('')
+const aiError   = ref('')
+
+// 时空背景
+const ctxYear  = ref('')
+const ctxPlace = ref('')
+// 穿越警报
+const checkText = ref('')
+// 细节查询
+const detailQ = ref('')
+// 环境描写
+const sceneInput = ref('')
+const sceneStyle = ref('典雅')
+
+// 提示词模板
+const PROMPTS = {
+  context: (year, place) =>
+    `你是专业的中国历史顾问，服务于历史小说创作者。
+请根据以下时空信息，用结构化方式输出创作参考（不超过400字）：
+时间：${year}年，地点：${place}
+
+请按以下维度回答：
+① 政治格局（皇帝/朝代/重大事件）
+② 社会制度（官制/科举/兵制要点）
+③ 日常生活（服饰特征/饮食习惯）
+④ 物价参考（米价/布价/常见物价）
+⑤ 创作提示（该时空写作需注意的禁忌或特色）
+语言简洁，以条目形式呈现，方便作者快速参考。`,
+
+  check: (text) =>
+    `你是历史考证专家，专门为历史小说作者纠错。
+请检查以下文段中的历史错误，包括但不限于：食材/器物使用时间错误、词汇/称谓时代错误、制度/礼仪不符等。
+
+文段：
+${text}
+
+请按以下格式输出：
+【错误点 N】原文："xxx" → 问题：xxx → 建议修改为：xxx
+
+若无明显错误，请回复"未发现明显时代错误，但建议注意……"并给出1-2条创作建议。`,
+
+  detail: (q) =>
+    `你是中国历史百科专家，服务于历史小说创作。
+请简洁准确地回答以下历史细节问题（200字以内），并在末尾注明朝代适用范围：
+
+问题：${q}
+
+要求：数据准确、来源可靠、实用性强，直接给出答案。`,
+
+  scene: (scene, style) =>
+    `你是擅长历史题材的文学作家，文风${style}。
+请根据以下场景要素，生成一段150-250字的环境描写，要求：
+- 历史细节准确（器物、植物、建筑符合时代）
+- 调动视觉、听觉、嗅觉多种感官
+- 语言${style}，可直接嵌入小说正文
+- 不出现现代词汇
+
+场景要素：${scene}`,
+}
+
+async function callSpark(prompt) {
+  aiLoading.value = true
+  aiResult.value = ''
+  aiError.value = ''
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.post('/api/spark/generate',
+      { prompt },
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (res.data?.code === 200) {
+      aiResult.value = res.data.data?.result || ''
+    } else {
+      aiError.value = res.data?.message || '请求失败'
+    }
+  } catch(e) {
+    aiError.value = e.response?.data?.message || '网络错误，请检查后端服务'
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+function runContext() {
+  if (!ctxYear.value.trim() || !ctxPlace.value.trim()) { aiError.value = '请填写年份和地点'; return }
+  callSpark(PROMPTS.context(ctxYear.value.trim(), ctxPlace.value.trim()))
+}
+function runCheck() {
+  if (!checkText.value.trim()) { aiError.value = '请输入要检查的文段'; return }
+  callSpark(PROMPTS.check(checkText.value.trim()))
+}
+function runDetail() {
+  if (!detailQ.value.trim()) { aiError.value = '请输入问题'; return }
+  callSpark(PROMPTS.detail(detailQ.value.trim()))
+}
+function runScene() {
+  if (!sceneInput.value.trim()) { aiError.value = '请输入场景要素'; return }
+  callSpark(PROMPTS.scene(sceneInput.value.trim(), sceneStyle.value))
+}
+
+function insertAiResult() {
+  if (!aiResult.value || !editorRef.value) return
+  const el = editorRef.value
+  const start = el.selectionStart
+  const before = editorContent.value.slice(0, start)
+  const after  = editorContent.value.slice(start)
+  editorContent.value = before + '\n\n' + aiResult.value + '\n\n' + after
+  insertBanner.value = 'AI助手结果'
+  setTimeout(() => insertBanner.value = '', 2000)
+}
 
 onMounted(() => {
   const wid = route.query.workId
@@ -463,4 +616,36 @@ onBeforeUnmount(() => {
 .editor-textarea { flex: 1; resize: none; border: none; border-radius: 0; padding: 1.5rem 2rem; background: var(--bg-card); color: var(--text-main); font-family: 'Segoe UI', 'Microsoft YaHei', 'SimSun', sans-serif; transition: none; overflow-y: auto; }
 .editor-textarea:focus { outline: none; }
 .editor-textarea::placeholder { color: var(--text-muted); }
+
+/* ── 历史助手侧边栏 ────────────────────────────────────────── */
+.ai-sidebar { width: 300px; min-width: 300px; background: var(--bg-card); border-left: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.2s, min-width 0.2s; overflow: hidden; }
+.ai-sidebar.collapsed { width: 36px; min-width: 36px; }
+.ai-sidebar-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 0.6rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-sidebar .sidebar-title { font-weight: 700; font-size: 0.9rem; color: var(--text-main); white-space: nowrap; }
+.ai-sidebar .collapse-btn { padding: 0.25rem 0.45rem; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; flex-shrink: 0; }
+.ai-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-tabs button { flex: 1; padding: 0.5rem 0.3rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s; }
+.ai-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
+.ai-panel { padding: 0.85rem 0.85rem 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
+.ai-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; margin: 0 0 0.25rem; }
+.ai-input { width: 100%; padding: 0.45rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; box-sizing: border-box; }
+.ai-input:focus { outline: none; border-color: var(--primary); }
+.ai-textarea { width: 100%; height: 90px; padding: 0.45rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
+.ai-textarea:focus { outline: none; border-color: var(--primary); }
+.ai-btn { width: 100%; padding: 0.5rem; border: none; border-radius: 7px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
+.ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-btn:hover:not(:disabled) { opacity: 0.88; }
+.ai-btn-ghost { width: 100%; padding: 0.4rem; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; transition: all 0.18s; }
+.ai-btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+.ai-error { margin: 0.5rem 0.85rem; padding: 0.5rem 0.75rem; background: rgba(229,57,53,0.08); border: 1px solid rgba(229,57,53,0.3); border-radius: 6px; color: #e53935; font-size: 0.8rem; }
+.ai-result { margin: 0.5rem 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-height: 0; }
+.ai-result-header { display: flex; align-items: center; justify-content: space-between; }
+.ai-result-header span { font-size: 0.78rem; font-weight: 700; color: var(--text-sub); }
+.ai-result-actions { display: flex; gap: 0.4rem; }
+.ai-insert-btn { padding: 0.22rem 0.6rem; border-radius: 5px; border: none; background: var(--primary); color: #fff; font-size: 0.75rem; cursor: pointer; font-weight: 600; }
+.ai-insert-btn:hover { opacity: 0.85; }
+.ai-clear-btn { padding: 0.22rem 0.6rem; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
+.ai-result-text { font-size: 0.8rem; color: var(--text-main); line-height: 1.7; white-space: pre-wrap; word-break: break-all; background: var(--bg-input); border: 1px solid var(--border); border-radius: 7px; padding: 0.75rem; margin: 0; overflow-y: auto; max-height: 380px; }
+.ai-loading { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
+.ai-spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
 </style>

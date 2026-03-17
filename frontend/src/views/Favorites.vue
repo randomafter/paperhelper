@@ -15,19 +15,15 @@
     <template v-if="mainTab === 'favorites'">
 
     <!-- 分组切换 -->
-    <div class="group-bar">
+    <div class="group-bar" v-if="groupList.length">
       <button
         v-for="g in groupList"
         :key="g"
         class="group-chip"
-        :class="{ active: currentGroup === g, system: SYSTEM_GROUPS.includes(g) }"
+        :class="{ active: currentGroup === g }"
         @click="currentGroup = g"
       >
         {{ g }}
-        <span v-if="!SYSTEM_GROUPS.includes(g)" class="group-actions" @click.stop>
-          <button class="group-btn edit" @click="editGroupName(g)" title="重命名">✏️</button>
-          <button class="group-btn del" @click="deleteGroup(g)" title="删除">✕</button>
-        </span>
       </button>
       <button class="group-chip add" @click="createGroup">＋ 新建分组</button>
     </div>
@@ -72,7 +68,7 @@
                 @change="onGroupSelect(item, $event.target.value)"
                 @click.stop
               >
-                <option v-for="g in assignableGroups" :key="g" :value="g">{{ g }}</option>
+                <option v-for="g in groupList" :key="g" :value="g">{{ g }}</option>
               </select>
             </td>
             <td>{{ item.category }}</td>
@@ -213,44 +209,6 @@
         <span class="bookmark-close" @click.stop="closeTab(tab.id)">✕</span>
       </div>
     </div>
-
-    <!-- 新建分组模态框 -->
-    <div v-if="showCreateGroup" class="modal-overlay" @click.self="showCreateGroup = false">
-      <div class="confirm-modal">
-        <h3>新建分组</h3>
-        <input v-model="newGroupName" type="text" class="group-input" placeholder="分组名称" @keyup.enter="doCreateGroup" />
-        <p v-if="createGroupError" class="error" style="margin-bottom:1rem;text-align:left">{{ createGroupError }}</p>
-        <div class="confirm-actions">
-          <button @click="showCreateGroup = false" class="btn-cancel">取消</button>
-          <button @click="doCreateGroup" :disabled="creatingGroup" class="btn-confirm">{{ creatingGroup ? '创建中...' : '确认' }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 编辑分组名模态框 -->
-    <div v-if="editingGroup" class="modal-overlay" @click.self="editingGroup = null">
-      <div class="confirm-modal">
-        <h3>重命名分组</h3>
-        <input v-model="editingGroupNewName" type="text" class="group-input" placeholder="新分组名称" @keyup.enter="doEditGroup" />
-        <div class="confirm-actions">
-          <button @click="editingGroup = null" class="btn-cancel">取消</button>
-          <button @click="doEditGroup" class="btn-confirm">确认</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 删除分组确认模态框 -->
-    <div v-if="deletingGroup" class="modal-overlay" @click.self="deletingGroup = null">
-      <div class="confirm-modal">
-        <div class="confirm-icon">⚠️</div>
-        <h3>确认删除分组？</h3>
-        <p>分组「{{ deletingGroup }}」中的所有收藏将被移至「未定义」。此操作不可撤销。</p>
-        <div class="confirm-actions">
-          <button @click="deletingGroup = null" class="btn-cancel">取消</button>
-          <button @click="doDeleteGroup" :disabled="deleting" class="btn-confirm-del">{{ deleting ? '删除中...' : '确认删除' }}</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -258,7 +216,6 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { materialApi } from '../api/material'
-import { favoriteGroupsApi } from '../api/works'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useMaterialTabsStore } from '../stores/materialTabs'
 import { userMaterialApi } from '../api/userMaterial'
@@ -332,8 +289,8 @@ async function saveMine(action) {
     }
     showMineModal.value = false
     await loadMyMaterials()
-    // 同步刷新收藏列表（已通过的自建素材会出现在收藏中），独立 try 避免污染错误提示
-    loadFavorites().catch(e => console.error('刷新收藏列表失败', e))
+    // 同步刷新收藏列表（已通过的自建素材会出现在收藏中）
+    await loadFavorites()
   } catch(e) { mineError.value = e.response?.data?.message || '保存失败' }
   finally { mineSaving.value = false }
 }
@@ -355,14 +312,6 @@ async function deleteMine(item) {
 
 const currentGroup = ref('全部')
 const extraGroups = ref([])
-const editingGroup = ref(null)
-const editingGroupNewName = ref('')
-const deletingGroup = ref(null)
-const deleting = ref(false)
-const showCreateGroup = ref(false)
-const newGroupName = ref('')
-const createGroupError = ref('')
-const creatingGroup = ref(false)
 
 const activeDetail = ref(null)
 const detailOpen = ref(false)
@@ -377,20 +326,17 @@ const categoryMap = computed(() => {
   return map
 })
 
-const SYSTEM_GROUPS = ['全部', '我的灵感', '未定义']
-
 const groupList = computed(() => {
-  // System groups always first in fixed order
-  // Also include any group names that exist on favorites but aren't in extraGroups yet
-  const fromFavorites = favorites.value
-    .map(f => f.favoriteGroup)
-    .filter(g => g && !SYSTEM_GROUPS.includes(g))
-  const allUserGroups = [...new Set([...extraGroups.value, ...fromFavorites].filter(g => !SYSTEM_GROUPS.includes(g)))]
-  return [...SYSTEM_GROUPS, ...allUserGroups]
+  const set = new Set()
+  set.add('全部')
+  set.add('我的灵感')
+  set.add('未定义')
+  extraGroups.value.forEach(g => set.add(g))
+  favorites.value.forEach(f => {
+    if (f.favoriteGroup) set.add(f.favoriteGroup)
+  })
+  return Array.from(set)
 })
-
-// Groups available for assigning a material (excludes '全部')
-const assignableGroups = computed(() => groupList.value.filter(g => g !== '全部'))
 
 const filteredFavorites = computed(() => {
   if (currentGroup.value === '全部') return favorites.value
@@ -400,10 +346,9 @@ const filteredFavorites = computed(() => {
 async function loadFavorites() {
   loading.value = true
   try {
-    const [favRes, mineRes, groupsRes] = await Promise.all([
+    const [favRes, mineRes] = await Promise.all([
       materialApi.getFavorites(),
       userMaterialApi.list(),
-      favoriteGroupsApi.list().catch(e => { console.error('加载分组失败', e); return { data: { code: 200, data: [] } } }),
     ])
     const favList = (favRes.data?.code === 200 && favRes.data?.data)
       ? favRes.data.data.map(it => ({
@@ -434,13 +379,6 @@ async function loadFavorites() {
     const existingTitles = new Set(favList.map(f => f.title))
     const uniqueMine = approvedMine.filter(m => !existingTitles.has(m.title))
     favorites.value = [...favList, ...uniqueMine]
-    
-    // 加载分组，过滤掉与系统分组同名的项
-    if (groupsRes.data?.code === 200 && groupsRes.data?.data) {
-      const SYSTEM = ['全部', '我的灵感', '未定义']
-      extraGroups.value = (groupsRes.data.data.map(g => g.name) || []).filter(n => !SYSTEM.includes(n))
-    }
-    
     await nextTick()
     renderChart()
   } catch(e) { console.error(e) } finally { loading.value = false }
@@ -506,20 +444,22 @@ async function onGroupSelect(item, groupName) {
   }
 }
 
+function createGroup() {
+  const name = window.prompt('新建分组名称，例如：我的灵感', '')
+  if (!name) return
+  const groupName = name.trim()
+  if (!groupName) return
+  if (!extraGroups.value.includes(groupName)) {
+    extraGroups.value.push(groupName)
+  }
+  currentGroup.value = groupName
+}
+
 async function openDetail(id) {
   detailLoading.value = true
   detailOpen.value = true
   detailCollapsed.value = false
   try {
-    // 自建素材直接从本地 favorites 数据中读取，不走公共 API
-    if (typeof id === 'string' && id.startsWith('mine_')) {
-      const item = favorites.value.find(f => f.id === id)
-      if (item) {
-        activeDetail.value = { ...item, tags: Array.isArray(item.tags) ? item.tags : [] }
-        tabs.openTab(activeDetail.value)
-      }
-      return
-    }
     const res = await materialApi.getById(id)
     if (res.data?.code === 200 && res.data?.data) {
       activeDetail.value = res.data.data
@@ -538,11 +478,6 @@ async function switchTab(id) {
   detailCollapsed.value = false
   detailOpen.value = true
   try {
-    if (typeof id === 'string' && id.startsWith('mine_')) {
-      const item = favorites.value.find(f => f.id === id)
-      if (item) activeDetail.value = { ...item, tags: Array.isArray(item.tags) ? item.tags : [] }
-      return
-    }
     const res = await materialApi.getById(id)
     if (res.data?.code === 200 && res.data?.data) {
       activeDetail.value = res.data.data
@@ -603,105 +538,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('mouseup', stopResize)
 })
 
-async function createGroup() {
-  newGroupName.value = ''
-  createGroupError.value = ''
-  showCreateGroup.value = true
-}
-
-async function doCreateGroup() {
-  const trimmed = newGroupName.value.trim()
-  if (!trimmed) { createGroupError.value = '分组名称不能为空'; return }
-  if (SYSTEM_GROUPS.includes(trimmed)) { createGroupError.value = `「${trimmed}」是系统保留分组名，请使用其他名称`; return }
-  creatingGroup.value = true; createGroupError.value = ''
-  try {
-    const res = await favoriteGroupsApi.create(trimmed)
-    if (res.data?.code === 200 && res.data?.data) {
-      if (!extraGroups.value.includes(res.data.data.name)) {
-        extraGroups.value.push(res.data.data.name)
-      }
-      currentGroup.value = res.data.data.name
-      showCreateGroup.value = false
-    } else {
-      createGroupError.value = res.data?.message || '创建失败'
-    }
-  } catch(e) {
-    createGroupError.value = e.response?.data?.message || '创建失败，请检查是否已登录'
-    console.error(e)
-  } finally {
-    creatingGroup.value = false
-  }
-}
-
-function editGroupName(g) {
-  editingGroup.value = g
-  editingGroupNewName.value = g
-}
-
-async function doEditGroup() {
-  if (!editingGroupNewName.value?.trim()) return
-  const newName = editingGroupNewName.value.trim()
-  if (newName === editingGroup.value) { editingGroup.value = null; return }
-  if (SYSTEM_GROUPS.includes(newName)) {
-    alert(`「${newName}」是系统保留分组名，请使用其他名称`)
-    return
-  }
-  try {
-    const groupsRes = await favoriteGroupsApi.list()
-    let group = groupsRes.data?.data?.find(g => g.name === editingGroup.value)
-    if (!group) {
-      // 该分组名在 favorite_group 表中不存在（可能是从收藏记录里来的），先创建再重命名
-      const createRes = await favoriteGroupsApi.create(editingGroup.value)
-      group = createRes.data?.data
-    }
-    if (!group) { alert('操作失败：无法找到或创建分组'); editingGroup.value = null; return }
-    await favoriteGroupsApi.rename(group.id, newName)
-    // 同步更新 extraGroups
-    const idx = extraGroups.value.indexOf(editingGroup.value)
-    if (idx >= 0) extraGroups.value[idx] = newName
-    else if (!extraGroups.value.includes(newName)) extraGroups.value.push(newName)
-    // 同步更新收藏列表中的分组名
-    favorites.value.forEach(f => { if (f.favoriteGroup === editingGroup.value) f.favoriteGroup = newName })
-    if (currentGroup.value === editingGroup.value) currentGroup.value = newName
-    editingGroup.value = null
-  } catch(e) {
-    alert(e.response?.data?.message || '重命名失败')
-    console.error(e)
-  }
-}
-
-function deleteGroup(g) { deletingGroup.value = g }
-
-async function doDeleteGroup() {
-  if (!deletingGroup.value) return
-  deleting.value = true
-  try {
-    const groupsRes = await favoriteGroupsApi.list()
-    let group = groupsRes.data?.data?.find(g => g.name === deletingGroup.value)
-    if (!group) {
-      // 分组记录不在 favorite_group 表中（如通过素材行下拉直接设置的分组名），
-      // 只在前端和收藏记录中清除，把受影响的公共收藏的 group_name 改为「未定义」
-      const affectedItems = favorites.value.filter(f => f.favoriteGroup === deletingGroup.value && f._source === 'public')
-      await Promise.all(affectedItems.map(f => materialApi.updateFavoriteGroup(f.id, '未定义').catch(() => {})))
-      favorites.value.forEach(f => { if (f.favoriteGroup === deletingGroup.value) f.favoriteGroup = '未定义' })
-      const idx = extraGroups.value.indexOf(deletingGroup.value)
-      if (idx >= 0) extraGroups.value.splice(idx, 1)
-      if (currentGroup.value === deletingGroup.value) currentGroup.value = '全部'
-      deletingGroup.value = null
-      return
-    }
-    await favoriteGroupsApi.delete(group.id)
-    const idx = extraGroups.value.indexOf(deletingGroup.value)
-    if (idx >= 0) extraGroups.value.splice(idx, 1)
-    favorites.value.forEach(f => { if (f.favoriteGroup === deletingGroup.value) f.favoriteGroup = '未定义' })
-    if (currentGroup.value === deletingGroup.value) currentGroup.value = '全部'
-    deletingGroup.value = null
-  } catch(e) {
-    alert(e.response?.data?.message || '删除失败')
-    console.error(e)
-  } finally { deleting.value = false }
-}
-
 onMounted(loadFavorites)
 </script>
 
@@ -711,17 +547,9 @@ onMounted(loadFavorites)
 .page-header h1 { font-size: 1.75rem; font-weight: 700; background: linear-gradient(90deg, var(--primary), var(--primary-light)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin: 0 0 0.25rem; }
 .subtitle { color: var(--text-sub); font-size: 0.9rem; margin: 0; }
 .group-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-.group-chip { border-radius: 999px; padding: 0.25rem 0.9rem; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-sub); font-size: 0.8rem; cursor: pointer; transition: all 0.2s; position: relative; }
+.group-chip { border-radius: 999px; padding: 0.25rem 0.9rem; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-sub); font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
 .group-chip.active { border-color: var(--primary); background: var(--bg-hover); color: var(--primary); font-weight: 600; }
 .group-chip.add { border-style: dashed; }
-.group-chip.add:hover { border-color: var(--primary); color: var(--primary); }
-.group-chip.system { opacity: 0.85; }
-.group-chip.system.active { opacity: 1; }
-.group-actions { display: none; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); gap: 0.2rem; }
-.group-chip:hover .group-actions { display: flex; }
-.group-btn { padding: 0.2rem 0.3rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; border-radius: 3px; transition: all 0.2s; }
-.group-btn:hover { color: var(--primary); }
-.group-btn.del:hover { color: #e53935; }
 .stat-row { display: flex; align-items: center; gap: 1.5rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; }
 .pie-chart { width: 220px; height: 160px; flex-shrink: 0; }
 .stat-info { display: flex; flex-direction: column; gap: 0.4rem; }
@@ -750,22 +578,6 @@ onMounted(loadFavorites)
 .loading, .empty { text-align: center; padding: 3rem; color: var(--text-muted); }
 .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; padding: 0.7rem 1.5rem; border-radius: 999px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 4px 16px var(--shadow); z-index: 9999; pointer-events: none; animation: fadeup 0.3s ease; }
 @keyframes fadeup { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-
-/* 模态框样式 */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.confirm-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 2.5rem 2rem; width: 90%; max-width: 380px; text-align: center; box-shadow: 0 16px 48px var(--shadow); }
-.confirm-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
-.confirm-modal h3 { margin: 0 0 0.75rem; font-size: 1.15rem; color: var(--text-main); }
-.confirm-modal p { color: var(--text-sub); font-size: 0.9rem; margin: 0 0 1.5rem; line-height: 1.6; }
-.group-input { width: 100%; padding: 0.6rem 0.9rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.9rem; margin-bottom: 1.5rem; box-sizing: border-box; }
-.group-input:focus { outline: none; border-color: var(--primary); }
-.confirm-actions { display: flex; gap: 0.75rem; }
-.btn-cancel { flex: 1; padding: 0.6rem; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
-.btn-cancel:hover { border-color: var(--primary); color: var(--primary); }
-.btn-confirm { flex: 1; padding: 0.6rem; border-radius: 7px; border: none; background: linear-gradient(90deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
-.btn-confirm:hover { opacity: 0.88; }
-.btn-confirm-del { flex: 1; padding: 0.6rem; border-radius: 7px; border: none; background: linear-gradient(90deg, #e53935, #ef5350); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
-.btn-confirm-del:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 右侧详情抽屉样式（与素材检索一致） */
 .detail-drawer { position: fixed; top: 60px; right: 0; bottom: 0; background: var(--bg-card); border-left: 1px solid var(--border); box-shadow: -4px 0 20px var(--shadow); display: flex; flex-direction: column; z-index: 200; min-width: 280px; }

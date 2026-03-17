@@ -19,3 +19,17 @@ mybatis-plus:
 jwt:
   secret: history-creation-jwt-secret-key-min-256-bits-for-hs256
   expiration-ms: 86400000
+
+# 讯飞星火大模型（HTTP接口）
+spark:
+  app-id: ca8279b2
+  api-key: xEcMmGZZABmuDnywKmvA:PBaGFyyZGLZeucaahpkM
+  api-secret: YjkzYjcyYWYxNmVmMGRhNzY2YjYwMjFm
+  # HTTP接口地址（Spark X2）
+  api-url: https://spark-api-open.xf-yun.com/x2/chat/completions
+  # 模型版本
+  model: spark-x
+  # 最大token数
+  max-tokens: 4096
+  # 超时秒数
+  timeout-seconds: 60
