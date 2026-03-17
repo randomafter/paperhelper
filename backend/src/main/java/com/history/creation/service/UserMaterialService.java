@@ -46,7 +46,7 @@ public class UserMaterialService {
         return list.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    /** 创建草稿 */
+    /** 创建素材（默认自用状态） */
     @Transactional
     public UserMaterialDTO create(Long userId, UserMaterialRequest req) {
         UserMaterial um = new UserMaterial();
@@ -55,7 +55,7 @@ public class UserMaterialService {
         um.setTitle(req.getTitle());
         um.setContent(req.getContent());
         um.setTags(req.getTags());
-        um.setStatus("draft");
+        um.setStatus("approved");  // 新建时直接为已通过（自用），不需审核
         userMaterialMapper.insert(um);
         return toDTO(um);
     }
@@ -88,13 +88,10 @@ public class UserMaterialService {
         return toDTO(um);
     }
 
-    /** 删除（仅限草稿/被拒绝） */
+    /** 删除（自用素材可随时删除） */
     @Transactional
     public void delete(Long userId, Long id) {
         UserMaterial um = getOwned(userId, id);
-        if ("approved".equals(um.getStatus())) {
-            throw new RuntimeException("已通过的素材不能删除");
-        }
         userMaterialMapper.deleteById(id);
     }
 

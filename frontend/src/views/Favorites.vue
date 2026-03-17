@@ -511,6 +511,15 @@ async function openDetail(id) {
   detailOpen.value = true
   detailCollapsed.value = false
   try {
+    // 自建素材直接从本地 favorites 数据中读取，不走公共 API
+    if (typeof id === 'string' && id.startsWith('mine_')) {
+      const item = favorites.value.find(f => f.id === id)
+      if (item) {
+        activeDetail.value = { ...item, tags: Array.isArray(item.tags) ? item.tags : [] }
+        tabs.openTab(activeDetail.value)
+      }
+      return
+    }
     const res = await materialApi.getById(id)
     if (res.data?.code === 200 && res.data?.data) {
       activeDetail.value = res.data.data
@@ -529,6 +538,11 @@ async function switchTab(id) {
   detailCollapsed.value = false
   detailOpen.value = true
   try {
+    if (typeof id === 'string' && id.startsWith('mine_')) {
+      const item = favorites.value.find(f => f.id === id)
+      if (item) activeDetail.value = { ...item, tags: Array.isArray(item.tags) ? item.tags : [] }
+      return
+    }
     const res = await materialApi.getById(id)
     if (res.data?.code === 200 && res.data?.data) {
       activeDetail.value = res.data.data

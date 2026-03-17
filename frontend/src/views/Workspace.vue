@@ -19,6 +19,9 @@
           <button @click="searchMats" class="btn-search-sm">搜索</button>
         </div>
         <div v-if="matSource === 'favorite'" class="search-area">
+          <select v-model="favGroup" class="mat-select">
+            <option v-for="g in favGroupList" :key="g" :value="g">{{ g }}</option>
+          </select>
           <input v-model="favSearch" placeholder="在收藏中搜索..." class="mat-search" />
         </div>
         <div class="mat-loading" v-if="matLoading">加载中...</div>
@@ -147,6 +150,12 @@ const matPageSize = 10
 const matTotalPages = computed(() => Math.ceil(matTotal.value / matPageSize) || 1)
 const favorites = ref([])
 const favSearch = ref('')
+const favGroup = ref('全部')
+const favGroupList = computed(() => {
+  const groups = new Set(['全部', '我的灵感', '未定义'])
+  favorites.value.forEach(f => { if (f.favoriteGroup) groups.add(f.favoriteGroup) })
+  return Array.from(groups)
+})
 
 const categories = [
   '历史沉淀','传统民俗','服饰装扮','行业手艺','宗教信仰',
@@ -157,10 +166,14 @@ const wordCount = computed(() => editorContent.value.replace(/\s/g,'').length)
 
 const displayMats = computed(() => {
   if (matSource.value === 'favorite') {
+    let list = favorites.value
+    if (favGroup.value !== '全部') {
+      list = list.filter(f => (f.favoriteGroup || '未定义') === favGroup.value)
+    }
     const kw = favSearch.value.trim().toLowerCase()
-    return kw ? favorites.value.filter(f =>
+    return kw ? list.filter(f =>
       f.title.toLowerCase().includes(kw) || f.content?.toLowerCase().includes(kw)
-    ) : favorites.value
+    ) : list
   }
   return searchResults.value
 })
@@ -185,9 +198,31 @@ function nextMatPage() { if (matPage.value < matTotalPages.value) { matPage.valu
 
 async function loadFavMats() {
   matLoading.value = true
+  favGroup.value = '全部'
   try {
-    const res = await materialApi.getFavorites()
-    if (res.data?.code === 200 && res.data?.data) favorites.value = res.data.data
+    const [favRes, mineRes] = await Promise.all([
+      materialApi.getFavorites(),
+      import('../api/userMaterial').then(m => m.userMaterialApi.list()).catch(() => ({ data: { code: 200, data: [] } })),
+    ])
+    const pubList = (favRes.data?.code === 200 && favRes.data?.data)
+      ? favRes.data.data.map(it => ({ ...it, favoriteGroup: it.favoriteGroup || '未定义', _source: 'public' }))
+      : []
+    const mineList = (mineRes.data?.code === 200 && mineRes.data?.data)
+      ? mineRes.data.data
+          .filter(m => m.status === 'approved')
+          .map(m => ({
+            id: `mine_${m.id}`,
+            category: m.category,
+            title: m.title,
+            content: m.content,
+            tags: m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+            favoriteGroup: '我的灵感',
+            isFavorite: true,
+            _source: 'mine',
+            _mineId: m.id,
+          }))
+      : []
+    favorites.value = [...pubList, ...mineList]
   } catch(e) { console.error(e) } finally { matLoading.value = false }
 }
 
