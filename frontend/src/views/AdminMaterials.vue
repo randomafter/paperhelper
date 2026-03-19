@@ -3,12 +3,19 @@
     <div class="page-header">
       <h1>素材管理</h1>
       <div class="header-actions">
-        <button class="create-btn" @click="showCreateModal = true">新增素材</button>
-        <button class="import-btn" @click="showImportModal = true">批量导入</button>
+        <button class="tab-btn" :class="{ active: adminTab === 'materials' }" @click="adminTab = 'materials'">素材列表</button>
+        <button class="tab-btn" :class="{ active: adminTab === 'categories' }" @click="adminTab = 'categories'">分类管理</button>
+        <template v-if="adminTab === 'materials'">
+          <button class="create-btn" @click="showCreateModal = true">新增素材</button>
+          <button class="import-btn" @click="showImportModal = true">批量导入</button>
+        </template>
+        <template v-else>
+          <button class="create-btn" @click="openNewCatModal">新增分类</button>
+        </template>
       </div>
     </div>
 
-    <div class="search-bar">
+    <div class="search-bar" v-if="adminTab === 'materials'">
       <select v-model="searchParams.category" @change="loadMaterials" class="filter-select">
         <option value="">全部类型</option>
         <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
@@ -18,8 +25,8 @@
     </div>
 
     <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="materials.length === 0" class="empty">暂无素材</div>
-    <div v-else class="materials-table">
+    <div v-else-if="adminTab === 'materials' && materials.length === 0" class="empty">暂无素材</div>
+    <div v-else-if="adminTab === 'materials'" class="materials-table">
       <table>
         <thead>
           <tr>
@@ -49,10 +56,31 @@
       </table>
     </div>
 
-    <div v-if="totalPages > 1" class="pagination">
+    <div v-if="adminTab === 'materials' && totalPages > 1" class="pagination">
       <button @click="prevPage" :disabled="currentPage === 1">上一页</button>
       <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
       <button @click="nextPage" :disabled="currentPage === totalPages">下一页</button>
+    </div>
+
+    <!-- 分类管理面板 -->
+    <div v-if="adminTab === 'categories'" class="categories-panel">
+      <div v-if="catLoading" class="loading">加载中...</div>
+      <div v-else class="materials-table">
+        <table>
+          <thead><tr><th>ID</th><th>分类名称</th><th>排序权重</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="cat in categoryList" :key="cat.id">
+              <td>{{ cat.id }}</td>
+              <td><span class="category-tag">{{ cat.name }}</span></td>
+              <td>{{ cat.sortOrder }}</td>
+              <td>
+                <button class="edit-btn" @click="editCategory(cat)">编辑</button>
+                <button class="delete-btn" @click="deleteCategory(cat.id)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 新增/编辑素材弹窗 -->
@@ -112,6 +140,26 @@
         </div>
       </div>
     </div>
+    <!-- 新增/编辑分类弹窗 -->
+    <div v-if="showCatModal" class="modal-overlay" @click.self="showCatModal = false">
+      <div class="modal">
+        <h2>{{ editCatId ? '编辑分类' : '新增分类' }}</h2>
+        <form @submit.prevent="saveCategory">
+          <div class="form-group">
+            <label>分类名称 *</label>
+            <input v-model="catForm.name" type="text" placeholder="请输入分类名称" required />
+          </div>
+          <div class="form-group">
+            <label>排序权重（越小越靠前）</label>
+            <input v-model.number="catForm.sortOrder" type="number" min="0" />
+          </div>
+          <div class="form-actions">
+            <button type="button" class="cancel-btn" @click="showCatModal = false">取消</button>
+            <button type="submit" class="submit-btn" :disabled="catSaving">{{ catSaving ? '保存中...' : '保存' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -119,6 +167,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { materialApi } from '../api/material'
+import { categoryApi } from '../api/category'
 
 const router = useRouter()
 const loading = ref(false)
@@ -133,27 +182,25 @@ const showImportModal = ref(false)
 const editId = ref(null)
 const tagsInput = ref('')
 const importFile = ref(null)
+const adminTab = ref('materials')
 
-const categories = [
-  '历史沉淀',
-  '传统民俗',
-  '服饰装扮',
-  '行业手艺',
-  '宗教信仰',
-  '兵器武林',
-  '饮食文化',
-  '玉石珍宝',
-  '传说典故',
-  '科技文明',
-  '五行异象',
-  '其他',
-]
+// 分类管理
+const categoryList = ref([])
+const catLoading = ref(false)
+const showCatModal = ref(false)
+const editCatId = ref(null)
+const catSaving = ref(false)
+const catForm = reactive({ name: '', sortOrder: 100 })
+
+// 动态分类列表（用于素材新增/编辑下拉）
+const categories = ref([])
 
 const searchParams = reactive({
   category: '',
   keyword: '',
   page: 1,
-  size: 20
+  size: 20,
+  showAll: true  // 管理端展示所有状态素材
 })
 
 const form = reactive({
@@ -161,6 +208,59 @@ const form = reactive({
   title: '',
   content: '',
 })
+
+async function loadCategories() {
+  catLoading.value = true
+  try {
+    const res = await categoryApi.list()
+    if (res.data?.code === 200) {
+      categoryList.value = res.data.data || []
+      categories.value = categoryList.value.map(c => c.name)
+    }
+  } catch(e) { console.error(e) } finally { catLoading.value = false }
+}
+
+function openNewCatModal() {
+  editCatId.value = null
+  catForm.name = ''
+  catForm.sortOrder = 100
+  showCatModal.value = true
+}
+
+function editCategory(cat) {
+  editCatId.value = cat.id
+  catForm.name = cat.name
+  catForm.sortOrder = cat.sortOrder
+  showCatModal.value = true
+}
+
+async function saveCategory() {
+  catSaving.value = true
+  try {
+    if (editCatId.value) {
+      await categoryApi.update(editCatId.value, { name: catForm.name, sortOrder: catForm.sortOrder })
+    } else {
+      await categoryApi.create({ name: catForm.name, sortOrder: catForm.sortOrder })
+    }
+    showCatModal.value = false
+    editCatId.value = null
+    catForm.name = ''
+    catForm.sortOrder = 100
+    await loadCategories()
+  } catch(e) {
+    alert('保存失败：' + (e.response?.data?.message || e.message))
+  } finally { catSaving.value = false }
+}
+
+async function deleteCategory(id) {
+  if (!confirm('确定要删除该分类吗？删除后不影响已有素材的分类字段。')) return
+  try {
+    await categoryApi.remove(id)
+    await loadCategories()
+  } catch(e) {
+    alert('删除失败：' + (e.response?.data?.message || e.message))
+  }
+}
 
 async function loadMaterials() {
   loading.value = true
@@ -288,6 +388,7 @@ function formatDate(dateStr) {
 }
 
 onMounted(() => {
+  loadCategories()
   loadMaterials()
 })
 </script>
@@ -325,6 +426,26 @@ onMounted(() => {
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.tab-btn {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid #444;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: transparent;
+  color: #aaa;
+  transition: all 0.2s;
+}
+.tab-btn.active {
+  background: #e94560;
+  color: #fff;
+  border-color: #e94560;
+}
+.tab-btn:hover:not(.active) {
+  border-color: #e94560;
+  color: #e94560;
 }
 
 .create-btn {

@@ -76,6 +76,7 @@
             <td><span v-for="tag in (item.tags||[]).slice(0,3)" :key="tag" class="tag">{{ tag }}</span></td>
             <td class="action-cell">
               <span v-if="item._source === 'mine'" class="mine-badge">我创作</span>
+              <button @click.stop="applyToAI(item)" class="btn-action ai">✦ AI</button>
               <button @click.stop="useInWorkspace(item)" class="btn-action use">引用</button>
               <button v-if="item._source !== 'mine'" @click.stop="removeFavorite(item)" class="btn-action del">取消收藏</button>
             </td>
@@ -105,18 +106,23 @@
           <div class="mine-preview">{{ item.content?.slice(0, 100) }}{{ (item.content?.length||0) > 100 ? '...' : '' }}</div>
           <div v-if="item.adminComment" class="admin-comment">审核意见：{{ item.adminComment }}</div>
           <div class="mine-actions">
+            <!-- draft/rejected/approved 都可编辑 -->
             <button
-              v-if="item.status === 'draft' || item.status === 'rejected'"
+              v-if="item.status !== 'pending'"
               @click="openMineModal(item)"
               class="btn-action edit">编辑</button>
+            <!-- draft/rejected/approved 都可提交审核 -->
             <button
-              v-if="item.status === 'draft' || item.status === 'rejected'"
+              v-if="item.status !== 'pending'"
               @click="submitMine(item)"
               class="btn-action submit">提交审核</button>
+            <!-- 审核中不可删除，其余状态都可删除 -->
             <button
-              v-if="item.status !== 'approved'"
+              v-if="item.status !== 'pending'"
               @click="deleteMine(item)"
               class="btn-action del">删除</button>
+            <!-- 审核中提示 -->
+            <span v-if="item.status === 'pending'" class="pending-hint">审核中，请等待管理员处理...</span>
           </div>
         </div>
       </div>
@@ -216,6 +222,7 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { materialApi } from '../api/material'
+import { categoryApi } from '../api/category'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useMaterialTabsStore } from '../stores/materialTabs'
 import { userMaterialApi } from '../api/userMaterial'
@@ -241,13 +248,17 @@ const mineSaving = ref(false)
 const mineError = ref('')
 const mineForm = ref({ category: '', title: '', content: '', tags: '' })
 
-const categories = [
-  '历史沉淀', '传统民俗', '服饰装扮', '行业手艺', '宗教信仰',
-  '兵器武林', '饮食文化', '玉石珍宝', '传说典故', '科技文明', '五行异象', '其他',
-]
+const categories = ref([])
+
+async function loadCategories() {
+  try {
+    const res = await categoryApi.list()
+    if (res.data?.code === 200) categories.value = (res.data.data || []).map(c => c.name)
+  } catch(e) { console.error(e) }
+}
 
 function statusLabel(s) {
-  return { draft: '草稿', pending: '待审核', approved: '已通过', rejected: '已拒绝' }[s] || s
+  return { draft: '自用', pending: '待审核', approved: '已通过审核', rejected: '已拒绝' }[s] || s
 }
 
 async function loadMyMaterials() {
@@ -303,11 +314,20 @@ async function submitMine(item) {
 }
 
 async function deleteMine(item) {
-  if (!confirm(`确认删除素材「${item.title}」？`)) return
+  const isApproved = item.status === 'approved'
+  const confirmMsg = isApproved
+    ? `确认删除素材「${item.title}」？\n\n⚠️ 该素材已通过审核并收录至公共素材库，删除后公共库中对应记录也将一并删除。`
+    : `确认删除素材「${item.title}」？`
+  if (!confirm(confirmMsg)) return
   try {
     await userMaterialApi.delete(item.id)
     myMaterials.value = myMaterials.value.filter(m => m.id !== item.id)
-  } catch(e) { console.error(e) }
+    copyMsg.value = `「${item.title}」已删除${isApproved ? '（公共库同步删除）' : ''}`
+    setTimeout(() => { copyMsg.value = '' }, 2500)
+  } catch(e) {
+    copyMsg.value = '删除失败：' + (e.response?.data?.message || e.message)
+    setTimeout(() => { copyMsg.value = '' }, 2500)
+  }
 }
 
 const currentGroup = ref('全部')
@@ -358,26 +378,26 @@ async function loadFavorites() {
         }))
       : []
 
-    // 将用户自建（已通过）的素材合并进收藏列表，默认归入「我的灵感」分组
-    const approvedMine = (mineRes.data?.code === 200 && mineRes.data?.data)
+    // 将用户所有自建素材（包括 draft/pending/approved/rejected）合并进收藏列表
+    const allMine = (mineRes.data?.code === 200 && mineRes.data?.data)
       ? mineRes.data.data
-          .filter(m => m.status === 'approved')
           .map(m => ({
             id: `mine_${m.id}`,
             category: m.category,
             title: m.title,
             content: m.content,
             tags: m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-            favoriteGroup: '我的灵感',
+            favoriteGroup: m.favoriteGroup || '我的灵感',
             isFavorite: true,
             _source: 'mine',
             _mineId: m.id,
+            _status: m.status,
           }))
       : []
 
-    // 合并，避免重复（公共收藏中已有的不重复添加）
+    // 合并，公共收藏已有的同名自建素材不重复添加
     const existingTitles = new Set(favList.map(f => f.title))
-    const uniqueMine = approvedMine.filter(m => !existingTitles.has(m.title))
+    const uniqueMine = allMine.filter(m => !existingTitles.has(m.title))
     favorites.value = [...favList, ...uniqueMine]
     await nextTick()
     renderChart()
@@ -418,6 +438,15 @@ function useInWorkspace(item) {
     copyMsg.value = ''
     router.push('/workspace')
   }, 1000)
+}
+
+function applyToAI(item) {
+  workspaceStore.applyToAI(item)
+  copyMsg.value = `已为 AI 绑定素材：「${item.title}」，正在跳转工作台...`
+  setTimeout(() => {
+    copyMsg.value = ''
+    router.push('/workspace')
+  }, 1200)
 }
 
 async function removeFavorite(item) {
@@ -538,7 +567,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('mouseup', stopResize)
 })
 
-onMounted(loadFavorites)
+onMounted(() => { loadCategories(); loadFavorites() })
 </script>
 
 <style scoped>
@@ -570,6 +599,8 @@ onMounted(loadFavorites)
 .action-cell { white-space: nowrap; }
 .btn-action { padding: 0.28rem 0.7rem; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-sub); transition: all 0.2s; margin-right: 0.25rem; }
 .btn-action:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-hover); }
+.btn-action.ai { border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.btn-action.ai:hover { background: var(--primary); color: #fff; }
 .btn-action.use { border-color: var(--accent); color: var(--accent); }
 .btn-action.use:hover { background: rgba(251,192,45,0.12); }
 .btn-action.del { border-color: #e53935; color: #e53935; }
@@ -632,11 +663,12 @@ onMounted(loadFavorites)
 .status-badge.rejected { background: rgba(229,57,53,0.12); color: #e53935; }
 .mine-preview { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 0.5rem; }
 .admin-comment { font-size: 0.82rem; color: #e53935; background: rgba(229,57,53,0.08); border-left: 3px solid #e53935; padding: 0.4rem 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; }
-.mine-actions { display: flex; gap: 0.5rem; }
+.mine-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .btn-action.edit { border-color: var(--primary); color: var(--primary); }
 .btn-action.edit:hover { background: var(--bg-hover); }
 .btn-action.submit { border-color: #43a047; color: #43a047; }
 .btn-action.submit:hover { background: rgba(67,160,71,0.1); }
+.pending-hint { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
 
 /* 弹窗 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }

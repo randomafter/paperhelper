@@ -21,6 +21,10 @@ export const userMaterialApi = {
   delete(id) {
     return request.delete(`/user-materials/${id}`)
   },
+  // 更新自建素材的收藏分组
+  updateGroup(id, groupName) {
+    return request.post(`/user-materials/${id}/group`, null, { params: { groupName } })
+  },
   // 管理员：待审核列表
   listPending() {
     return request.get('/user-materials/admin/pending')

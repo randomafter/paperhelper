@@ -15,6 +15,8 @@ public class UserMaterialDTO {
     /** draft / pending / approved / rejected */
     private String status;
     private String adminComment;
+    /** 用户自定义收藏分组名称 */
+    private String favoriteGroup;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

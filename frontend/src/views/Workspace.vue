@@ -27,9 +27,12 @@
           <div v-for="item in displayMats" :key="item.id" class="mat-item" :class="{ inserting: insertingId === item.id }">
             <div class="mat-item-top">
               <span class="mat-cat">{{ item.category }}</span>
-              <button @click="insertMat(item)" class="btn-insert">插入</button>
+              <div class="mat-actions">
+                <button @click="applyToAI(item)" class="btn-ai-apply" :class="{ active: boundMat?.id === item.id }" title="应用到AI">✦ AI</button>
+                <button @click="insertMat(item)" class="btn-insert">插入</button>
+              </div>
             </div>
-            <div class="mat-title">{{ item.title }}</div>
+            <div class="mat-title" @click="openMatDetail(item)" style="cursor:pointer">{{ item.title }}</div>
             <div class="mat-preview">{{ item.content?.slice(0,60) }}{{ (item.content?.length||0)>60?'...':'' }}</div>
           </div>
           <div v-if="matSource==='search' && matTotalPages>1" class="mat-pagination">
@@ -57,6 +60,11 @@
       <div v-if="insertBanner" class="insert-banner">
         ✅ 已插入「{{ insertBanner }}」
         <button @click="insertBanner = ''" class="banner-close">✕</button>
+      </div>
+
+      <div v-if="boundMat" class="ai-bound-banner">
+        ✦ 已为 AI 绑定素材：<strong>{{ boundMat.title }}</strong>
+        <button @click="boundMat = null" class="banner-close">✕</button>
       </div>
 
       <!-- 自动保存进度条 -->
@@ -97,80 +105,86 @@
         @keydown.tab.prevent="handleTab"
         @input="startAutoSave"
       ></textarea>
-    </div>
 
-    <!-- 历史助手侧边栏 -->
-    <aside class="ai-sidebar" :class="{ collapsed: aiCollapsed }">
-      <div class="ai-sidebar-header">
-        <button class="collapse-btn" @click="aiCollapsed = !aiCollapsed">{{ aiCollapsed ? '<' : '>' }}</button>
-        <span v-if="!aiCollapsed" class="sidebar-title">历史助手</span>
-      </div>
-      <template v-if="!aiCollapsed">
-        <div class="ai-tabs">
-          <button v-for="t in aiTabs" :key="t.key" :class="{ active: aiTab === t.key }" @click="aiTab = t.key">{{ t.label }}</button>
-        </div>
-
-        <!-- 时空背景 -->
-        <div v-if="aiTab === 'context'" class="ai-panel">
-          <p class="ai-desc">输入时间和地点，获取政治格局、人物、制度、服饰、物价等背景信息</p>
-          <input v-model="ctxYear" class="ai-input" placeholder="年份，如：755" />
-          <input v-model="ctxPlace" class="ai-input" placeholder="地点，如：长安" />
-          <button @click="runContext" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='context' ? '查询中...' : '🔍 查询背景' }}</button>
-        </div>
-
-        <!-- 穿越警报 -->
-        <div v-if="aiTab === 'check'" class="ai-panel">
-          <p class="ai-desc">粘贴文段，检测时代错误（食材、器物、词汇等）并给出修正建议</p>
-          <textarea v-model="checkText" class="ai-textarea" placeholder="粘贴要检查的文段..."></textarea>
-          <button @click="runCheck" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='check' ? '检测中...' : '⚠️ 检测错误' }}</button>
-          <button @click="checkText = editorContent.slice(0, 800)" class="ai-btn-ghost">引用当前文章（前800字）</button>
-        </div>
-
-        <!-- 细节查询 -->
-        <div v-if="aiTab === 'detail'" class="ai-panel">
-          <p class="ai-desc">提问历史细节，如官职俸禄、礼仪规范、建筑形制等</p>
-          <input v-model="detailQ" class="ai-input" placeholder="如：唐代七品官年俸是多少？" />
-          <button @click="runDetail" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='detail' ? '查询中...' : '📖 查询细节' }}</button>
-        </div>
-
-        <!-- 环境描写 -->
-        <div v-if="aiTab === 'scene'" class="ai-panel">
-          <p class="ai-desc">输入场景要素，生成具有文学性的历史环境描写</p>
-          <input v-model="sceneInput" class="ai-input" placeholder="如：盛唐曲江池，暮春，贵族宴饮" />
-          <select v-model="sceneStyle" class="ai-input">
-            <option value="典雅">典雅古风</option>
-            <option value="清丽">清丽婉约</option>
-            <option value="雄浑">雄浑壮阔</option>
-            <option value="写实">写实细腻</option>
-          </select>
-          <button @click="runScene" :disabled="aiLoading" class="ai-btn">{{ aiLoading && aiTab==='scene' ? '生成中...' : '✍️ 生成描写' }}</button>
-        </div>
-
-        <!-- 结果展示 -->
-        <div v-if="aiError" class="ai-error">{{ aiError }}</div>
-        <div v-if="aiResult" class="ai-result">
-          <div class="ai-result-header">
-            <span>结果</span>
-            <div class="ai-result-actions">
-              <button @click="insertAiResult" class="ai-insert-btn">插入编辑器</button>
-              <button @click="aiResult = ''; aiError = ''" class="ai-clear-btn">清除</button>
+      <!-- 悬浮 AI 助手 -->
+      <div class="ai-float-wrap">
+        <button class="ai-float-btn" @click="aiPanelOpen = !aiPanelOpen" :class="{ active: aiPanelOpen }" title="历史 AI 助手">
+          <span>✦</span><span>AI</span>
+        </button>
+        <transition name="ai-pop">
+        <div v-if="aiPanelOpen" class="ai-float-panel">
+          <div class="ai-fp-header">
+            <span class="ai-fp-title">✦ 历史助手</span>
+            <button class="ai-fp-close" @click="aiPanelOpen = false">✕</button>
+          </div>
+          <div class="ai-fp-tabs">
+            <button v-for="t in aiTabs" :key="t.key" :class="{ active: aiTab === t.key }" @click="aiTab = t.key; aiResult = ''; aiError = ''">{{ t.icon }} {{ t.label }}</button>
+          </div>
+          <div class="ai-fp-body">
+            <div v-if="aiTab === 'scene'" class="ai-fp-form">
+              <input v-model="sceneInput" class="ai-fp-input" placeholder="场景要素，如：盛唐曲江池，暮春，贵族宴饮" />
+              <select v-model="sceneStyle" class="ai-fp-input">
+                <option value="典雅">典雅古风</option><option value="清丽">清丽婉约</option>
+                <option value="雄浑">雄浑壮阔</option><option value="写实">写实细腻</option>
+              </select>
+              <button @click="runScene" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '生成中...' : '生成描写' }}</button>
+            </div>
+            <div v-if="aiTab === 'polish'" class="ai-fp-form">
+              <textarea v-model="polishText" class="ai-fp-textarea" placeholder="粘贴要润色的文段"></textarea>
+              <button @click="polishText = editorContent.slice(0,600)" class="ai-fp-ghost">引用当前文章（前600字）</button>
+              <button @click="runPolish" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '润色中...' : '开始润色' }}</button>
+            </div>
+            <div v-if="aiTab === 'check'" class="ai-fp-form">
+              <textarea v-model="checkText" class="ai-fp-textarea" placeholder="粘贴要检测的文段"></textarea>
+              <button @click="checkText = editorContent.slice(0,800)" class="ai-fp-ghost">引用当前文章（前800字）</button>
+              <button @click="runCheck" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '检测中...' : '检测错误' }}</button>
+            </div>
+            <div v-if="aiTab === 'detail'" class="ai-fp-form">
+              <input v-model="detailQ" class="ai-fp-input" placeholder="如：唐代七品官年俸是多少？" @keyup.enter="runDetail" />
+              <button @click="runDetail" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '查询中...' : '查询' }}</button>
+            </div>
+            <div v-if="aiLoading" class="ai-fp-loading"><div class="ai-fp-spinner"></div><span>星火思考中...</span></div>
+            <div v-if="aiError" class="ai-fp-error">{{ aiError }}</div>
+            <div v-if="aiResult" class="ai-fp-result">
+              <div class="ai-fp-result-bar">
+                <span>AI 结果</span>
+                <div><button @click="insertAiResult" class="ai-fp-insert">插入编辑器</button><button @click="aiResult='';aiError=''" class="ai-fp-clear">清除</button></div>
+              </div>
+              <pre class="ai-fp-result-text">{{ aiResult }}</pre>
             </div>
           </div>
-          <pre class="ai-result-text">{{ aiResult }}</pre>
         </div>
-        <div v-else-if="aiLoading" class="ai-loading">
-          <div class="ai-spinner"></div>
-          <span>星火思考中...</span>
-        </div>
-      </template>
-    </aside>
+        </transition>
+      </div>
+    </div>
   </div>
-</template>
 
+  <!-- 素材详情弹窗 -->
+  <transition name="modal-fade">
+  <div v-if="matDetail" class="mat-modal-mask" @click.self="matDetail = null">
+    <div class="mat-modal">
+      <div class="mat-modal-header">
+        <span class="mat-modal-cat">{{ matDetail.category }}</span>
+        <button class="mat-modal-close" @click="matDetail = null">✕</button>
+      </div>
+      <h3 class="mat-modal-title">{{ matDetail.title }}</h3>
+      <div class="mat-modal-tags" v-if="matDetail.tags?.length">
+        <span v-for="tag in matDetail.tags" :key="tag" class="mat-tag">{{ tag }}</span>
+      </div>
+      <pre class="mat-modal-content">{{ matDetail.content }}</pre>
+      <div class="mat-modal-actions">
+        <button @click="applyToAI(matDetail); matDetail = null" class="btn-apply-ai">✦ 应用到 AI</button>
+        <button @click="insertMat(matDetail); matDetail = null" class="btn-insert-modal">插入编辑器</button>
+      </div>
+    </div>
+  </div>
+  </transition>
+</template>
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { materialApi } from '../api/material'
+import { userMaterialApi } from '../api/userMaterial'
 import { worksApi } from '../api/works'
 import { useWorkspaceStore } from '../stores/workspace'
 import axios from 'axios'
@@ -215,10 +229,14 @@ const matTotalPages = computed(() => Math.ceil(matTotal.value / matPageSize) || 
 const favorites = ref([])
 const favSearch = ref('')
 
-const categories = [
-  '历史沉淀','传统民俗','服饰装扮','行业手艺','宗教信仰',
-  '兵器武林','饮食文化','玉石珍宝','传说典故','科技文明','五行异象','其他',
-]
+const categories = ref([])
+
+async function loadCategories() {
+  try {
+    const res = await import('../api/category').then(m => m.categoryApi.list())
+    if (res.data?.code === 200) categories.value = (res.data.data || []).map(c => c.name)
+  } catch(e) { console.error(e) }
+}
 
 const wordCount = computed(() => editorContent.value.replace(/\s/g,'').length)
 
@@ -253,8 +271,27 @@ function nextMatPage() { if (matPage.value < matTotalPages.value) { matPage.valu
 async function loadFavMats() {
   matLoading.value = true
   try {
-    const res = await materialApi.getFavorites()
-    if (res.data?.code === 200 && res.data?.data) favorites.value = res.data.data
+    const [favRes, mineRes] = await Promise.all([
+      materialApi.getFavorites(),
+      userMaterialApi.list(),
+    ])
+    const favList = (favRes.data?.code === 200 && favRes.data?.data) ? favRes.data.data : []
+    const mineMats = (mineRes.data?.code === 200 && mineRes.data?.data)
+      ? mineRes.data.data.map(m => ({
+          id: `mine_${m.id}`,
+          category: m.category,
+          title: m.title,
+          content: m.content,
+          tags: m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+          favoriteGroup: m.favoriteGroup || '我的灵感',
+          _source: 'mine',
+          _mineId: m.id,
+          _status: m.status,
+        }))
+      : []
+    const existingTitles = new Set(favList.map(f => f.title))
+    const uniqueMine = mineMats.filter(m => !existingTitles.has(m.title))
+    favorites.value = [...favList, ...uniqueMine]
   } catch(e) { console.error(e) } finally { matLoading.value = false }
 }
 
@@ -400,14 +437,19 @@ watch(() => workspaceStore.pendingInsert, (mat) => {
   if (mat) { insertMat(mat); workspaceStore.clearPending() }
 }, { immediate: true })
 
+// 监听从收藏页应用到AI的素材
+watch(() => workspaceStore.pendingAI, (mat) => {
+  if (mat) { boundMat.value = mat; aiPanelOpen.value = true; workspaceStore.clearPendingAI() }
+}, { immediate: true })
+
 // ── 历史助手 ──────────────────────────────────────────────────
-const aiCollapsed = ref(false)
-const aiTab = ref('context')
+const aiPanelOpen = ref(false)
+const aiTab = ref('scene')
 const aiTabs = [
-  { key: 'context', label: '时空' },
-  { key: 'check',   label: '警报' },
-  { key: 'detail',  label: '细节' },
-  { key: 'scene',   label: '描写' },
+  { key: 'scene',  icon: '✍️', label: '生成情节' },
+  { key: 'polish', icon: '✨', label: 'AI润色' },
+  { key: 'check',  icon: '⚠️', label: '穿越警报' },
+  { key: 'detail', icon: '📖', label: '素材问答' },
 ]
 const aiLoading = ref(false)
 const aiResult  = ref('')
@@ -423,6 +465,21 @@ const detailQ = ref('')
 // 环境描写
 const sceneInput = ref('')
 const sceneStyle = ref('典雅')
+// AI润色
+const polishText = ref('')
+// 绑定素材
+const boundMat = ref(null)
+// 素材详情弹窗
+const matDetail = ref(null)
+
+function applyToAI(item) {
+  boundMat.value = item
+  aiPanelOpen.value = true
+}
+
+function openMatDetail(item) {
+  matDetail.value = item
+}
 
 // 提示词模板
 const PROMPTS = {
@@ -476,8 +533,10 @@ async function callSpark(prompt) {
   aiError.value = ''
   try {
     const token = localStorage.getItem('token')
+    const payload = { prompt }
+    if (boundMat.value?.id) payload.materialId = boundMat.value.id
     const res = await axios.post('/api/spark/generate',
-      { prompt },
+      payload,
       { headers: { Authorization: `Bearer ${token}` } }
     )
     if (res.data?.code === 200) {
@@ -508,6 +567,11 @@ function runScene() {
   if (!sceneInput.value.trim()) { aiError.value = '请输入场景要素'; return }
   callSpark(PROMPTS.scene(sceneInput.value.trim(), sceneStyle.value))
 }
+function runPolish() {
+  if (!polishText.value.trim()) { aiError.value = '请输入要润色的文段'; return }
+  const prompt = `你是专业的历史文学编辑，请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本：\n\n${polishText.value.trim()}`
+  callSpark(prompt)
+}
 
 function insertAiResult() {
   if (!aiResult.value || !editorRef.value) return
@@ -527,6 +591,7 @@ onMounted(() => {
     loadWork(workId.value)
   }
   searchMats()
+  loadCategories()
 })
 
 onBeforeUnmount(() => {
@@ -617,35 +682,76 @@ onBeforeUnmount(() => {
 .editor-textarea:focus { outline: none; }
 .editor-textarea::placeholder { color: var(--text-muted); }
 
-/* ── 历史助手侧边栏 ────────────────────────────────────────── */
-.ai-sidebar { width: 300px; min-width: 300px; background: var(--bg-card); border-left: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.2s, min-width 0.2s; overflow: hidden; }
-.ai-sidebar.collapsed { width: 36px; min-width: 36px; }
-.ai-sidebar-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 0.6rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.ai-sidebar .sidebar-title { font-weight: 700; font-size: 0.9rem; color: var(--text-main); white-space: nowrap; }
-.ai-sidebar .collapse-btn { padding: 0.25rem 0.45rem; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; flex-shrink: 0; }
-.ai-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.ai-tabs button { flex: 1; padding: 0.5rem 0.3rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s; }
-.ai-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
-.ai-panel { padding: 0.85rem 0.85rem 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
-.ai-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; margin: 0 0 0.25rem; }
-.ai-input { width: 100%; padding: 0.45rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; box-sizing: border-box; }
-.ai-input:focus { outline: none; border-color: var(--primary); }
-.ai-textarea { width: 100%; height: 90px; padding: 0.45rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
-.ai-textarea:focus { outline: none; border-color: var(--primary); }
-.ai-btn { width: 100%; padding: 0.5rem; border: none; border-radius: 7px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
-.ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ai-btn:hover:not(:disabled) { opacity: 0.88; }
-.ai-btn-ghost { width: 100%; padding: 0.4rem; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; transition: all 0.18s; }
-.ai-btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
-.ai-error { margin: 0.5rem 0.85rem; padding: 0.5rem 0.75rem; background: rgba(229,57,53,0.08); border: 1px solid rgba(229,57,53,0.3); border-radius: 6px; color: #e53935; font-size: 0.8rem; }
-.ai-result { margin: 0.5rem 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-height: 0; }
-.ai-result-header { display: flex; align-items: center; justify-content: space-between; }
-.ai-result-header span { font-size: 0.78rem; font-weight: 700; color: var(--text-sub); }
-.ai-result-actions { display: flex; gap: 0.4rem; }
-.ai-insert-btn { padding: 0.22rem 0.6rem; border-radius: 5px; border: none; background: var(--primary); color: #fff; font-size: 0.75rem; cursor: pointer; font-weight: 600; }
-.ai-insert-btn:hover { opacity: 0.85; }
-.ai-clear-btn { padding: 0.22rem 0.6rem; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
-.ai-result-text { font-size: 0.8rem; color: var(--text-main); line-height: 1.7; white-space: pre-wrap; word-break: break-all; background: var(--bg-input); border: 1px solid var(--border); border-radius: 7px; padding: 0.75rem; margin: 0; overflow-y: auto; max-height: 380px; }
-.ai-loading { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
-.ai-spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+/* ── 悬浮 AI 助手 ─────────────────────────────────────────── */
+.ai-float-wrap { position: absolute; bottom: 1.5rem; right: 1.5rem; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
+.editor-area { position: relative; }
+.ai-float-btn { width: 52px; height: 52px; border-radius: 50%; border: none; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-size: 0.78rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,0.18); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; transition: transform 0.2s, box-shadow 0.2s; }
+.ai-float-btn:hover, .ai-float-btn.active { transform: scale(1.1); box-shadow: 0 6px 24px rgba(0,0,0,0.28); }
+.ai-float-btn span:first-child { font-size: 1rem; line-height: 1; }
+.ai-float-btn span:last-child { font-size: 0.62rem; letter-spacing: 1px; }
+.ai-float-panel { width: 320px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 40px rgba(0,0,0,0.18); overflow: hidden; }
+.ai-fp-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: linear-gradient(135deg, var(--primary), var(--primary-light)); }
+.ai-fp-title { color: #fff; font-weight: 700; font-size: 0.9rem; }
+.ai-fp-close { background: rgba(255,255,255,0.2); border: none; color: #fff; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+.ai-fp-close:hover { background: rgba(255,255,255,0.35); }
+.ai-fp-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.ai-fp-tabs button { flex: 1; padding: 0.45rem 0.2rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s; white-space: nowrap; }
+.ai-fp-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; background: var(--bg-hover); }
+.ai-fp-body { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; max-height: 380px; overflow-y: auto; }
+.ai-fp-form { display: flex; flex-direction: column; gap: 0.45rem; }
+.ai-fp-input { width: 100%; padding: 0.4rem 0.65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; box-sizing: border-box; font-family: inherit; }
+.ai-fp-input:focus { outline: none; border-color: var(--primary); }
+.ai-fp-textarea { width: 100%; height: 80px; padding: 0.4rem 0.65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
+.ai-fp-textarea:focus { outline: none; border-color: var(--primary); }
+.ai-fp-run { width: 100%; padding: 0.45rem; border: none; border-radius: 7px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
+.ai-fp-run:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-fp-run:hover:not(:disabled) { opacity: 0.88; }
+.ai-fp-ghost { width: 100%; padding: 0.35rem; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; transition: all 0.18s; }
+.ai-fp-ghost:hover { border-color: var(--primary); color: var(--primary); }
+.ai-fp-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.82rem; padding: 0.5rem 0; }
+.ai-fp-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-fp-error { padding: 0.45rem 0.65rem; background: rgba(229,57,53,0.08); border: 1px solid rgba(229,57,53,0.25); border-radius: 7px; color: #e53935; font-size: 0.78rem; }
+.ai-fp-result { display: flex; flex-direction: column; gap: 0.4rem; }
+.ai-fp-result-bar { display: flex; align-items: center; justify-content: space-between; }
+.ai-fp-result-bar > span { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+.ai-fp-result-bar div { display: flex; gap: 0.35rem; }
+.ai-fp-insert { padding: 0.2rem 0.55rem; border-radius: 5px; border: none; background: var(--primary); color: #fff; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.ai-fp-insert:hover { opacity: 0.85; }
+.ai-fp-clear { padding: 0.2rem 0.55rem; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; }
+.ai-fp-result-text { font-size: 0.78rem; color: var(--text-main); line-height: 1.7; white-space: pre-wrap; word-break: break-all; background: var(--bg-input); border: 1px solid var(--border); border-radius: 7px; padding: 0.6rem 0.75rem; margin: 0; max-height: 200px; overflow-y: auto; }
+.ai-pop-enter-active { transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+.ai-pop-leave-active { transition: all 0.15s ease; }
+.ai-pop-enter-from { opacity: 0; transform: scale(0.85) translateY(10px); transform-origin: bottom right; }
+.ai-pop-leave-to { opacity: 0; transform: scale(0.9) translateY(6px); transform-origin: bottom right; }
+
+/* 应用到AI按钮 */
+.mat-actions { display: flex; gap: 0.3rem; align-items: center; }
+.btn-ai-apply { padding: 0.12rem 0.45rem; border-radius: 4px; border: 1px solid var(--primary); background: transparent; color: var(--primary); font-size: 0.68rem; font-weight: 700; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.btn-ai-apply:hover, .btn-ai-apply.active { background: var(--primary); color: #fff; }
+
+/* AI 绑定素材提示条 */
+.ai-bound-banner { background: linear-gradient(90deg, rgba(var(--primary-rgb),0.08), rgba(var(--primary-rgb),0.04)); border-bottom: 1px solid var(--primary); padding: 0.35rem 1rem; font-size: 0.82rem; color: var(--primary); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.ai-bound-banner strong { font-weight: 700; }
+
+/* 素材详情弹窗 */
+.mat-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.mat-modal { background: var(--bg-card); border-radius: 14px; width: 560px; max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 12px 48px rgba(0,0,0,0.22); overflow: hidden; }
+.mat-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.2rem 0.5rem; flex-shrink: 0; }
+.mat-modal-cat { font-size: 0.72rem; padding: 0.1rem 0.55rem; background: linear-gradient(90deg, var(--primary), var(--primary-light)); color: #fff; border-radius: 20px; font-weight: 600; }
+.mat-modal-close { background: transparent; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+.mat-modal-close:hover { background: var(--bg-hover); }
+.mat-modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text-main); padding: 0 1.2rem 0.5rem; margin: 0; flex-shrink: 0; }
+.mat-modal-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 1.2rem 0.75rem; flex-shrink: 0; }
+.mat-tag { font-size: 0.72rem; padding: 0.1rem 0.5rem; border: 1px solid var(--border); border-radius: 20px; color: var(--text-muted); }
+.mat-modal-content { flex: 1; overflow-y: auto; padding: 0 1.2rem; font-size: 0.88rem; color: var(--text-main); line-height: 1.8; white-space: pre-wrap; word-break: break-all; margin: 0; font-family: inherit; }
+.mat-modal-actions { display: flex; gap: 0.75rem; padding: 1rem 1.2rem; border-top: 1px solid var(--border); flex-shrink: 0; }
+.btn-apply-ai { flex: 1; padding: 0.55rem; border: none; border-radius: 8px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s; }
+.btn-apply-ai:hover { opacity: 0.88; }
+.btn-insert-modal { flex: 1; padding: 0.55rem; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-sub); font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+.btn-insert-modal:hover { border-color: var(--primary); color: var(--primary); }
+.modal-fade-enter-active { transition: all 0.2s ease; }
+.modal-fade-leave-active { transition: all 0.15s ease; }
+.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; }
+.modal-fade-enter-from .mat-modal { transform: scale(0.95) translateY(12px); }
 </style>

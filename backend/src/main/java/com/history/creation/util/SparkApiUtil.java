@@ -27,6 +27,7 @@ public class SparkApiUtil {
     private static final Logger log = LoggerFactory.getLogger(SparkApiUtil.class);
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
 
+
     private final SparkProperties props;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;

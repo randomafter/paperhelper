@@ -70,6 +70,18 @@ public class UserMaterialController {
         }
     }
 
+    /** 更新自建素材的收藏分组 */
+    @PostMapping("/{id}/group")
+    public Result<?> updateGroup(@PathVariable Long id, @RequestParam String groupName) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        try {
+            userMaterialService.updateGroup(userId, id, groupName);
+            return Result.ok("更新成功");
+        } catch (RuntimeException e) {
+            return Result.fail(400, e.getMessage());
+        }
+    }
+
     /** 管理员：待审核列表 */
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/pending")

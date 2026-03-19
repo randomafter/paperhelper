@@ -155,6 +155,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { materialApi } from '../api/material'
+import { categoryApi } from '../api/category'
 import { useMaterialTabsStore } from '../stores/materialTabs'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useRouter } from 'vue-router'
@@ -164,21 +165,8 @@ const tabs = useMaterialTabsStore()
 const workspaceStore = useWorkspaceStore()
 const router = useRouter()
 const isAdmin = computed(() => auth.user?.role === 'ADMIN')
-const categories = [
-  '历史沉淀',
-  '传统民俗',
-  '服饰装扮',
-  '行业手艺',
-  '宗教信仰',
-  '兵器武林',
-  '饮食文化',
-  '玉石珍宝',
-  '传说典故',
-  '科技文明',
-  '五行异象',
-  '其他',
-]
 const filters = reactive({ category: '', keyword: '' })
+const categories = ref([])
 const materials = ref([])
 const loading = ref(false)
 const page = ref(1)
@@ -339,7 +327,16 @@ async function doDelete() {
   try { await materialApi.remove(deletingItem.value.id); showDeleteConfirm.value = false; loadMaterials() }
   catch(e) { console.error(e) } finally { deleting.value = false }
 }
-onMounted(loadMaterials)
+async function loadCategories() {
+  try {
+    const res = await categoryApi.list()
+    if (res.data?.code === 200) {
+      categories.value = (res.data.data || []).map(c => c.name)
+    }
+  } catch(e) { console.error(e) }
+}
+
+onMounted(() => { loadCategories(); loadMaterials() })
 </script>
 
 <style scoped>

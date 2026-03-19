@@ -47,8 +47,12 @@ public class MaterialService {
     public Page<MaterialDTO> searchMaterials(MaterialSearchRequest req, Long userId) {
         LambdaQueryWrapper<Material> wrapper = new LambdaQueryWrapper<>();
         
-        // 检索只展示已发布内容
-        wrapper.eq(Material::getStatus, "PUBLISHED");
+        // 检索只展示已发布内容（status为null时由管理端调用，展示全部）
+        if (req.getStatus() != null && !req.getStatus().isEmpty()) {
+            wrapper.eq(Material::getStatus, req.getStatus());
+        } else if (!Boolean.TRUE.equals(req.getShowAll())) {
+            wrapper.eq(Material::getStatus, "PUBLISHED");
+        }
 
         if (req.getCategory() != null && !req.getCategory().isEmpty()) {
             wrapper.eq(Material::getCategory, req.getCategory());
@@ -305,6 +309,7 @@ public class MaterialService {
                     material.setCategory(category.trim());
                     material.setTitle(title.trim());
                     material.setContent(content.trim());
+                    material.setStatus("PUBLISHED");
                     materialMapper.insert(material);
                     
                     if (tagsStr != null && !tagsStr.trim().isEmpty()) {

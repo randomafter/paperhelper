@@ -302,6 +302,7 @@ CREATE TABLE `user_material`  (
   `tags` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '标签，逗号分隔',
   `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'draft' COMMENT 'draft=草稿/pending=待审核/approved=已通过/rejected=已拒绝',
   `admin_comment` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '审核意见',
+  `favorite_group` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '我的灵感' COMMENT '用户自定义收藏分组名称',
   `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
   `updated_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0),
   PRIMARY KEY (`id`) USING BTREE,
@@ -338,3 +339,38 @@ CREATE TABLE `verification_code`  (
 -- ----------------------------
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ----------------------------
+-- Table structure for material_category
+-- ----------------------------
+DROP TABLE IF EXISTS `material_category`;
+CREATE TABLE `material_category`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '分类名称',
+  `sort_order` int(0) NOT NULL DEFAULT 0 COMMENT '排序权重，越小越靠前',
+  `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `updated_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_name`(`name`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '素材分类' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of material_category
+-- ----------------------------
+INSERT INTO `material_category` VALUES (1, '历史沉淀', 1, NOW(), NOW());
+INSERT INTO `material_category` VALUES (2, '传统民俗', 2, NOW(), NOW());
+INSERT INTO `material_category` VALUES (3, '服饰装扮', 3, NOW(), NOW());
+INSERT INTO `material_category` VALUES (4, '行业手艺', 4, NOW(), NOW());
+INSERT INTO `material_category` VALUES (5, '宗教信仰', 5, NOW(), NOW());
+INSERT INTO `material_category` VALUES (6, '兵器武林', 6, NOW(), NOW());
+INSERT INTO `material_category` VALUES (7, '饮食文化', 7, NOW(), NOW());
+INSERT INTO `material_category` VALUES (8, '玉石珍宝', 8, NOW(), NOW());
+INSERT INTO `material_category` VALUES (9, '传说典故', 9, NOW(), NOW());
+INSERT INTO `material_category` VALUES (10, '科技文明', 10, NOW(), NOW());
+INSERT INTO `material_category` VALUES (11, '五行异象', 11, NOW(), NOW());
+INSERT INTO `material_category` VALUES (12, '其他', 12, NOW(), NOW());
+
+-- ----------------------------
+-- Migration: add favorite_group to user_material
+-- ----------------------------
+ALTER TABLE `user_material` ADD COLUMN IF NOT EXISTS `favorite_group` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '我的灵感' COMMENT '用户自定义收藏分组名称';

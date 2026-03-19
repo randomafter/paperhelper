@@ -8,20 +8,12 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("user_material")
-public class UserMaterial {
+@TableName("material_category")
+public class MaterialCategory {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long userId;
-    private String category;
-    private String title;
-    private String content;
-    private String tags;
-    /** draft / pending / approved / rejected */
-    private String status;
-    private String adminComment;
-    /** 用户自定义收藏分组名称 */
-    private String favoriteGroup;
+    private String name;
+    private Integer sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
