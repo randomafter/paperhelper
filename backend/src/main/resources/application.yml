@@ -5,11 +5,17 @@ spring:
     url: jdbc:mysql://127.0.0.1:3306/history_creation?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectionCollation=utf8mb4_unicode_ci
     username: root
     password: 123456
+  mvc:
+    async:
+      request-timeout: 180000
 
 server:
   port: 8080
   servlet:
     context-path: /api
+  # SSE 长连接需要关闭响应缓冲
+  tomcat:
+    connection-timeout: 180000
 
 mybatis-plus:
   configuration:
@@ -30,6 +36,6 @@ spark:
   # 模型版本
   model: spark-x
   # 最大token数
-  max-tokens: 4096
+  max-tokens: 8192
   # 超时秒数
   timeout-seconds: 60

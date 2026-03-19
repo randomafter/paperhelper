@@ -11,6 +11,9 @@ public class CreationWorkDTO {
     private String title;
     private String content;
     private String groupName;
+    private String pinnedOutline;
+    private String charProfiles;
+    private String outlineData;
     private LocalDateTime lastOpenedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

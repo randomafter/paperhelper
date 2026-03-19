@@ -4,6 +4,8 @@ import com.history.creation.util.SparkApiUtil;
 import com.history.creation.util.SparkApiUtil.SparkApiException;
 import org.springframework.stereotype.Service;
 
+import java.util.function.Consumer;
+
 /**
  * 讯飞星火大模型业务服务
  */
@@ -17,17 +19,33 @@ public class SparkService {
     }
 
     /**
-     * 通用文本生成
+     * 通用文本生成（同步）
      */
     public String generate(String prompt) throws SparkApiException {
         return sparkApiUtil.chat(null, prompt);
     }
 
     /**
-     * 带系统指令的文本生成
+     * 带系统指令的文本生成（同步）
      */
     public String generateWithSystem(String systemPrompt, String userMessage) throws SparkApiException {
         return sparkApiUtil.chat(systemPrompt, userMessage);
+    }
+
+    /**
+     * 流式文本生成（SSE 推送专用）
+     *
+     * @param systemPrompt 系统提示词（可为 null）
+     * @param userMessage  用户输入
+     * @param onChunk      每收到文字块时的回调
+     * @param onDone       流结束时的回调
+     * @param onError      发生错误时的回调
+     */
+    public void generateStream(String systemPrompt, String userMessage,
+                               Consumer<String> onChunk,
+                               Runnable onDone,
+                               Consumer<String> onError) {
+        sparkApiUtil.chatStreamCallback(systemPrompt, userMessage, onChunk, onDone, onError);
     }
 
     /**

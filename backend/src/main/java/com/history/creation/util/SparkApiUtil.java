@@ -114,6 +114,64 @@ public class SparkApiUtil {
         return sb.toString();
     }
 
+    /**
+     * 流式请求，逐块回调（用于 SSE 推送）
+     *
+     * @param systemPrompt 系统提示词
+     * @param userMessage  用户输入
+     * @param onChunk      每收到一块内容时的回调，参数为文本片段
+     * @param onDone       流结束时的回调
+     * @param onError      发生错误时的回调
+     */
+    public void chatStreamCallback(String systemPrompt, String userMessage,
+                                   java.util.function.Consumer<String> onChunk,
+                                   Runnable onDone,
+                                   java.util.function.Consumer<String> onError) {
+        String requestBody = buildRequestBody(systemPrompt, userMessage, true);
+        Request request = new Request.Builder()
+                .url(props.getApiUrl())
+                .addHeader("Authorization", "Bearer " + props.getApiKey())
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(requestBody, JSON_TYPE))
+                .build();
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                log.error("[Spark Stream] 网络异常: {}", e.getMessage());
+                onError.accept("网络连接异常: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    String errBody = response.body() != null ? response.body().string() : "";
+                    onError.accept("API请求失败: " + parseErrorMessage(errBody));
+                    return;
+                }
+                if (response.body() == null) { onError.accept("响应体为空"); return; }
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("data: ")) {
+                            String data = line.substring(6).trim();
+                            if ("[DONE]".equals(data)) break;
+                            String chunk = parseStreamChunk(data);
+                            if (chunk != null && !chunk.isEmpty()) {
+                                onChunk.accept(chunk);
+                            }
+                        }
+                    }
+                    onDone.run();
+                } catch (IOException e) {
+                    log.error("[Spark Stream] 读取流异常: {}", e.getMessage());
+                    onError.accept("读取响应流异常: " + e.getMessage());
+                }
+            }
+        });
+    }
+
     // ── 私有方法 ──────────────────────────────────────────────────
 
     private String buildRequestBody(String systemPrompt, String userMessage, boolean stream) {

@@ -53,8 +53,11 @@ public class CreationWorkController {
         Long userId = SecurityUtils.getCurrentUserId();
         String title = body.getOrDefault("title", "未命名");
         String content = body.getOrDefault("content", "");
+        String pinnedOutline = body.get("pinnedOutline");
+        String charProfiles = body.get("charProfiles");
+        String outlineData = body.get("outlineData");
         try {
-            return Result.ok(workService.save(userId, id, title, content));
+            return Result.ok(workService.save(userId, id, title, content, pinnedOutline, charProfiles, outlineData));
         } catch (RuntimeException e) {
             return Result.fail(400, e.getMessage());
         }

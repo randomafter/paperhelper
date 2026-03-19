@@ -18,11 +18,11 @@
     </div>
 
     <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="feedbacks.length === 0" class="empty">
+    <div v-else-if="filteredFeedbacks.length === 0" class="empty">
       <p>暂无反馈</p>
     </div>
     <div v-else class="feedback-list">
-      <div v-for="feedback in feedbacks" :key="feedback.id" class="feedback-item">
+      <div v-for="feedback in filteredFeedbacks" :key="feedback.id" class="feedback-item">
         <div class="feedback-header">
           <div class="user-info">
             <span class="username">{{ feedback.username }}</span>

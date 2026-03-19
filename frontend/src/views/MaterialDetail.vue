@@ -9,7 +9,6 @@
     <div v-else class="detail-card">
       <div class="detail-header">
         <div class="meta">
-          <span class="dynasty-tag">{{ material.dynasty }}</span>
           <span class="category-tag">{{ material.category }}</span>
         </div>
         <h1 class="detail-title">{{ material.title }}</h1>
@@ -45,23 +44,14 @@
           <h2>编辑素材</h2><button class="close-btn" @click="showEdit = false">✕</button>
         </div>
         <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label>朝代 *</label>
-              <select v-model="form.dynasty" class="field full">
-                <option v-for="d in dynasties" :key="d" :value="d">{{ d }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>分类 *</label>
-              <select v-model="form.category" class="field full">
-                <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-              </select>
-            </div>
+          <div class="form-group">
+            <label>分类 *</label>
+            <select v-model="form.category" class="field full">
+              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+            </select>
           </div>
           <div class="form-group"><label>标题 *</label><input v-model="form.title" class="field full" /></div>
           <div class="form-group"><label>内容 *</label><textarea v-model="form.content" rows="6" class="field full" /></div>
-          <div class="form-group"><label>来源链接</label><input v-model="form.sourceUrl" class="field full" /></div>
           <div class="form-group"><label>标签（逗号分隔）</label><input v-model="form.tagsStr" class="field full" /></div>
           <p v-if="editError" class="error">{{ editError }}</p>
         </div>
@@ -97,7 +87,6 @@ const router = useRouter()
 const auth = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'ADMIN')
 
-const dynasties = ['汉', '唐', '宋', '明']
 const categories = [
   '历史沉淀',
   '传统民俗',
@@ -122,7 +111,7 @@ const actionMsgType = ref('success')
 const showEdit = ref(false)
 const saving = ref(false)
 const editError = ref('')
-const form = reactive({ dynasty: '', category: '', title: '', content: '', tagsStr: '' })
+const form = reactive({ category: '', title: '', content: '', tagsStr: '' })
 
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
@@ -150,16 +139,16 @@ async function toggleFavorite() {
 }
 
 function openEdit() {
-  Object.assign(form, { dynasty: material.value.dynasty, category: material.value.category, title: material.value.title, content: material.value.content, tagsStr: (material.value.tags || []).join(',') })
+  Object.assign(form, { category: material.value.category, title: material.value.title, content: material.value.content, tagsStr: (material.value.tags || []).join(',') })
   editError.value = ''; showEdit.value = true
 }
 
 async function doEdit() {
-  if (!form.dynasty || !form.category || !form.title || !form.content) { editError.value = '请填写必填字段'; return }
+  if (!form.category || !form.title || !form.content) { editError.value = '请填写必填字段'; return }
   saving.value = true; editError.value = ''
   const tags = form.tagsStr ? form.tagsStr.split(',').map(t => t.trim()).filter(Boolean) : []
   try {
-    const res = await materialApi.update({ id: material.value.id, dynasty: form.dynasty, category: form.category, title: form.title, content: form.content, tags })
+    const res = await materialApi.update({ id: material.value.id, category: form.category, title: form.title, content: form.content, tags })
     if (res.data?.code === 200) { material.value = res.data.data; showEdit.value = false }
     else editError.value = res.data?.message || '保存失败'
   } catch (e) { editError.value = e.response?.data?.message || '保存失败' }

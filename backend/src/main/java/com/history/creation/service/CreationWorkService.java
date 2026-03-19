@@ -64,7 +64,8 @@ public class CreationWorkService {
 
     /** 保存/更新作品内容（明确更新updatedAt） */
     @Transactional
-    public CreationWorkDTO save(Long userId, Long id, String title, String content) {
+    public CreationWorkDTO save(Long userId, Long id, String title, String content,
+                                String pinnedOutline, String charProfiles, String outlineData) {
         if (id == null) {
             return create(userId, title, content, null);
         }
@@ -74,6 +75,9 @@ public class CreationWorkService {
         }
         work.setTitle(title != null && !title.isBlank() ? title : "未命名");
         work.setContent(content != null ? content : "");
+        if (pinnedOutline != null) work.setPinnedOutline(pinnedOutline);
+        if (charProfiles != null) work.setCharProfiles(charProfiles);
+        if (outlineData != null) work.setOutlineData(outlineData);
         work.setUpdatedAt(LocalDateTime.now());
         workMapper.updateById(work);
         return toDTO(work);
@@ -108,6 +112,9 @@ public class CreationWorkService {
         dto.setTitle(work.getTitle());
         dto.setContent(work.getContent());
         dto.setGroupName(work.getGroupName());
+        dto.setPinnedOutline(work.getPinnedOutline());
+        dto.setCharProfiles(work.getCharProfiles());
+        dto.setOutlineData(work.getOutlineData());
         dto.setLastOpenedAt(work.getLastOpenedAt());
         dto.setCreatedAt(work.getCreatedAt());
         dto.setUpdatedAt(work.getUpdatedAt());

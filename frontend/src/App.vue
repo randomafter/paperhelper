@@ -29,6 +29,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; transition: backg
   --bg-header: #16162a;
   --bg-input: rgba(255,255,255,0.08);
   --bg-hover: rgba(233,69,96,0.12);
+  --bg-editor: #15152a;
   --text-main: #e8e8f0;
   --text-sub: #9090b0;
   --text-muted: #606080;
@@ -36,6 +37,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; transition: backg
   --border-accent: rgba(233,69,96,0.3);
   --shadow: rgba(0,0,0,0.4);
   --tag-bg: #2a2a4a;
+  --editor-line: rgba(255,255,255,0.025);
 }
 
 /* ===== 浅色主题：青配焦黄 ===== */
@@ -49,6 +51,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; transition: backg
   --bg-header: #ffffff;
   --bg-input: rgba(0,0,0,0.05);
   --bg-hover: rgba(0,137,123,0.08);
+  --bg-editor: #fdfaf5;
   --text-main: #1a2e2c;
   --text-sub: #4a6462;
   --text-muted: #8aabaa;
@@ -56,6 +59,7 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; transition: backg
   --border-accent: rgba(0,137,123,0.3);
   --shadow: rgba(0,0,0,0.1);
   --tag-bg: #e0f2f1;
+  --editor-line: rgba(0,0,0,0.025);
 }
 
 body {

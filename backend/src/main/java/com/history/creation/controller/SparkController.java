@@ -9,8 +9,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 讯飞星火大模型接口
@@ -22,6 +26,8 @@ public class SparkController {
 
     private final SparkService sparkService;
     private final MaterialService materialService;
+    // 用于异步处理 SSE 流
+    private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
     public SparkController(SparkService sparkService, MaterialService materialService) {
         this.sparkService = sparkService;
@@ -29,24 +35,13 @@ public class SparkController {
     }
 
     /**
-     * 通用文本生成
+     * 通用文本生成（同步）
      * POST /api/spark/generate
-     * Body: { "prompt": "...", "systemPrompt": "...（可选）" }
      */
     @PostMapping("/generate")
     public Result<Map<String, String>> generate(@RequestBody GenerateRequest req) {
         try {
-            String finalPrompt = req.getPrompt();
-            // 如果传了素材ID，自动拼入素材内容
-            if (req.getMaterialId() != null) {
-                try {
-                    MaterialDTO mat = materialService.getMaterialById(req.getMaterialId(), null);
-                    if (mat != null) {
-                        finalPrompt = "【参考素材】\n标题：" + mat.getTitle() +
-                                "\n内容：" + mat.getContent() + "\n\n" + finalPrompt;
-                    }
-                } catch (Exception ignored) {}
-            }
+            String finalPrompt = buildPromptWithMaterials(req.getPrompt(), req.getMaterialId(), req.getMaterialIds());
             String result = req.getSystemPrompt() != null && !req.getSystemPrompt().isBlank()
                     ? sparkService.generateWithSystem(req.getSystemPrompt(), finalPrompt)
                     : sparkService.generate(finalPrompt);
@@ -59,9 +54,65 @@ public class SparkController {
     }
 
     /**
+     * SSE 流式文本生成
+     * POST /api/spark/stream
+     * 返回 text/event-stream，每个事件携带一段文字
+     */
+    @PostMapping(value = "/stream", produces = "text/event-stream")
+    public SseEmitter stream(@RequestBody GenerateRequest req) {
+        // timeout 设置为 3 分钟（足够长的生成时间）
+        SseEmitter emitter = new SseEmitter(180_000L);
+        sseExecutor.execute(() -> {
+            try {
+                String finalPrompt = buildPromptWithMaterials(req.getPrompt(), req.getMaterialId(), req.getMaterialIds());
+                String systemPrompt = req.getSystemPrompt();
+
+                sparkService.generateStream(
+                    systemPrompt,
+                    finalPrompt,
+                    chunk -> {
+                        try {
+                            // 每个 chunk 作为一个 SSE data 事件发送
+                            emitter.send(SseEmitter.event()
+                                .name("chunk")
+                                .data(chunk));
+                        } catch (IOException e) {
+                            emitter.completeWithError(e);
+                        }
+                    },
+                    () -> {
+                        try {
+                            // 发送结束标记
+                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                            emitter.complete();
+                        } catch (IOException e) {
+                            emitter.completeWithError(e);
+                        }
+                    },
+                    errMsg -> {
+                        try {
+                            emitter.send(SseEmitter.event().name("error").data(errMsg));
+                            emitter.complete();
+                        } catch (IOException ex) {
+                            emitter.completeWithError(ex);
+                        }
+                    }
+                );
+            } catch (Exception e) {
+                try {
+                    emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
+                    emitter.complete();
+                } catch (IOException ex) {
+                    emitter.completeWithError(ex);
+                }
+            }
+        });
+        return emitter;
+    }
+
+    /**
      * 生成历史素材内容建议
      * POST /api/spark/suggest-material
-     * Body: { "title": "...", "category": "..." }
      */
     @PostMapping("/suggest-material")
     public Result<Map<String, String>> suggestMaterial(@RequestBody SuggestRequest req) {
@@ -78,7 +129,6 @@ public class SparkController {
     /**
      * 文章润色
      * POST /api/spark/polish
-     * Body: { "text": "..." }
      */
     @PostMapping("/polish")
     public Result<Map<String, String>> polish(@RequestBody PolishRequest req) {
@@ -92,6 +142,37 @@ public class SparkController {
         }
     }
 
+    // ── 私有辅助方法 ──────────────────────────────────────────────
+
+    private String buildPromptWithMaterials(String prompt, Long materialId, java.util.List<Long> materialIds) {
+        StringBuilder sb = new StringBuilder();
+        // 单素材（向后兼容）
+        if (materialId != null) {
+            try {
+                MaterialDTO mat = materialService.getMaterialById(materialId, null);
+                if (mat != null) {
+                    sb.append("【参考素材】\n标题：").append(mat.getTitle())
+                      .append("\n内容：").append(mat.getContent()).append("\n\n");
+                }
+            } catch (Exception ignored) {}
+        }
+        // 多素材
+        if (materialIds != null && !materialIds.isEmpty()) {
+            int idx = 1;
+            for (Long id : materialIds) {
+                try {
+                    MaterialDTO mat = materialService.getMaterialById(id, null);
+                    if (mat != null) {
+                        sb.append("【参考素材").append(idx++).append("】\n标题：").append(mat.getTitle())
+                          .append("\n内容：").append(mat.getContent()).append("\n\n");
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        sb.append(prompt);
+        return sb.toString();
+    }
+
     // ── 请求体 DTO ────────────────────────────────────────────────
 
     public static class GenerateRequest {
@@ -100,12 +181,15 @@ public class SparkController {
         private String prompt;
         private String systemPrompt;
         private Long materialId;
+        private java.util.List<Long> materialIds;
         public String getPrompt() { return prompt; }
         public void setPrompt(String prompt) { this.prompt = prompt; }
         public String getSystemPrompt() { return systemPrompt; }
         public void setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; }
         public Long getMaterialId() { return materialId; }
         public void setMaterialId(Long materialId) { this.materialId = materialId; }
+        public java.util.List<Long> getMaterialIds() { return materialIds; }
+        public void setMaterialIds(java.util.List<Long> materialIds) { this.materialIds = materialIds; }
     }
 
     public static class SuggestRequest {
