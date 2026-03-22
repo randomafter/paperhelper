@@ -69,6 +69,21 @@ public class MaterialService {
                             "AND mt.tag_id = t.id " +
                             "AND t.name LIKE CONCAT('%', {0}, '%')", kw)
             );
+            // 相关性排序：标题完全匹配=1，标题模糊=2，标签匹配=3，正文匹配=4，兜底=5
+            // 同优先级内再按创建时间倒序
+            String escapedKw = kw.replace("'", "''");
+            wrapper.last("ORDER BY " +
+                "CASE " +
+                "  WHEN title = '" + escapedKw + "' THEN 1 " +
+                "  WHEN title LIKE '%" + escapedKw + "%' THEN 2 " +
+                "  WHEN EXISTS(SELECT 1 FROM material_tag mt2, tag t2 " +
+                "    WHERE mt2.material_id = material.id AND mt2.tag_id = t2.id " +
+                "    AND t2.name LIKE '%" + escapedKw + "%') THEN 3 " +
+                "  WHEN content LIKE '%" + escapedKw + "%' THEN 4 " +
+                "  ELSE 5 " +
+                "END ASC, created_at DESC");
+        } else {
+            wrapper.orderByDesc(Material::getCreatedAt);
         }
         if (req.getTag() != null && !req.getTag().isEmpty()) {
             wrapper.exists("SELECT 1 FROM material_tag mt, tag t " +
@@ -76,8 +91,6 @@ public class MaterialService {
                     "AND mt.tag_id = t.id " +
                     "AND t.name = {0}", req.getTag());
         }
-        
-        wrapper.orderByDesc(Material::getCreatedAt);
         
         Page<Material> page = new Page<>(req.getPage(), req.getSize());
         Page<Material> resultPage = materialMapper.selectPage(page, wrapper);

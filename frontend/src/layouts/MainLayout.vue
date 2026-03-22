@@ -1,73 +1,84 @@
 <template>
   <div class="layout">
-    <header class="header">
-      <div class="header-left">
-        <router-link to="/" class="logo">
-          <span class="logo-icon">✨</span>
-          <span class="logo-text">历史特色创作</span>
-        </router-link>
-      </div>
-      <div class="header-right">
-        <div class="user-info">
-          <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
-          <span class="role-badge" :class="{ admin: isAdmin }">{{ isAdmin ? '👑 管理员' : '✨ 创作者' }}</span>
+    <header class="header" :class="{ collapsed: headerCollapsed }">
+      <div class="header-inner">
+        <div class="header-left">
+          <router-link to="/" class="logo">
+            <span class="logo-icon">✨</span>
+            <span class="logo-text">历史特色创作</span>
+          </router-link>
         </div>
-        <button class="logout-btn" @click="logout">退出登录</button>
+        <div class="header-right">
+          <div class="user-info">
+            <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
+            <span class="role-badge" :class="{ admin: isAdmin }">{{ isAdmin ? '👑 管理员' : '✨ 创作者' }}</span>
+          </div>
+          <button class="logout-btn" @click="logout">退出登录</button>
+        </div>
       </div>
+      <!-- 收起/展开按钮 -->
+      <button class="header-toggle" @click="toggleHeader" :title="headerCollapsed ? '展开导航栏' : '收起导航栏'">
+        {{ headerCollapsed ? '▾' : '▴' }}
+      </button>
     </header>
 
-    <div class="container">
-      <aside class="sidebar">
+    <div class="container" :style="{ marginTop: headerCollapsed ? '18px' : '60px' }">
+      <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }" :style="{ height: 'calc(100vh - ' + (headerCollapsed ? 18 : 60) + 'px)' }">
+        <button class="sidebar-toggle" @click="toggleSidebar" :title="sidebarCollapsed ? '展开菜单' : '收起菜单'">
+          {{ sidebarCollapsed ? '›' : '‹' }}
+        </button>
+
         <nav class="nav-menu">
           <div class="nav-group">
-            <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
-              <span class="icon">🏠</span><span>首页</span>
+            <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }" :title="sidebarCollapsed ? '首页' : ''">
+              <span class="icon">🏠</span><span class="nav-label">首页</span>
             </router-link>
           </div>
 
           <div class="nav-group">
             <div class="group-title">素材管理</div>
-            <router-link to="/materials" class="nav-item" :class="{ active: route.path === '/materials' }">
-              <span class="icon">📚</span><span>素材检索</span>
+            <router-link to="/materials" class="nav-item" :class="{ active: route.path === '/materials' }" :title="sidebarCollapsed ? '素材检索' : ''">
+              <span class="icon">📚</span><span class="nav-label">素材检索</span>
             </router-link>
-            <router-link to="/favorites" class="nav-item" :class="{ active: route.path === '/favorites' }">
-              <span class="icon">❤️</span><span>我的收藏</span>
+            <router-link to="/favorites" class="nav-item" :class="{ active: route.path === '/favorites' }" :title="sidebarCollapsed ? '我的收藏' : ''">
+              <span class="icon">❤️</span><span class="nav-label">我的收藏</span>
             </router-link>
           </div>
 
           <div class="nav-group">
             <div class="group-title">创作中心</div>
-            <router-link to="/works" class="nav-item" :class="{ active: route.path === '/works' }">
-              <span class="icon">📝</span><span>我的作品</span>
+            <router-link to="/works" class="nav-item" :class="{ active: route.path === '/works' }" :title="sidebarCollapsed ? '我的作品' : ''">
+              <span class="icon">📝</span><span class="nav-label">我的作品</span>
             </router-link>
-            <router-link to="/workspace" class="nav-item" :class="{ active: route.path === '/workspace' }">
-              <span class="icon">🎨</span><span>创作工作台</span>
+            <router-link to="/workspace" class="nav-item" :class="{ active: route.path === '/workspace' }" :title="sidebarCollapsed ? '创作工作台' : ''">
+              <span class="icon">🎨</span><span class="nav-label">创作工作台</span>
             </router-link>
           </div>
 
           <div class="nav-group">
-            <router-link to="/profile" class="nav-item" :class="{ active: route.path === '/profile' }">
-              <span class="icon">👤</span><span>个人中心</span>
-              <span v-if="unreadCount > 0" class="nav-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+            <router-link to="/profile" class="nav-item" :class="{ active: route.path === '/profile' }" :title="sidebarCollapsed ? '个人中心' : ''">
+              <span class="icon">👤</span><span class="nav-label">个人中心</span>
+              <span v-if="unreadCount > 0 && !sidebarCollapsed" class="nav-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+              <span v-if="unreadCount > 0 && sidebarCollapsed" class="nav-badge-dot"></span>
             </router-link>
           </div>
 
           <div v-if="isAdmin" class="nav-group">
             <div class="group-title">管理员</div>
-            <router-link to="/admin/materials" class="nav-item" :class="{ active: route.path === '/admin/materials' }">
-              <span class="icon">⚙️</span><span>素材管理</span>
+            <router-link to="/admin/materials" class="nav-item" :class="{ active: route.path === '/admin/materials' }" :title="sidebarCollapsed ? '素材管理' : ''">
+              <span class="icon">⚙️</span><span class="nav-label">素材管理</span>
             </router-link>
-            <router-link to="/admin/review" class="nav-item" :class="{ active: route.path === '/admin/review' }">
-              <span class="icon">🔍</span><span>素材审核</span>
+            <router-link to="/admin/review" class="nav-item" :class="{ active: route.path === '/admin/review' }" :title="sidebarCollapsed ? '素材审核' : ''">
+              <span class="icon">🔍</span><span class="nav-label">素材审核</span>
             </router-link>
-            <router-link to="/admin/feedback" class="nav-item" :class="{ active: route.path === '/admin/feedback' }">
-              <span class="icon">💬</span><span>用户反馈</span>
+            <router-link to="/admin/feedback" class="nav-item" :class="{ active: route.path === '/admin/feedback' }" :title="sidebarCollapsed ? '用户反馈' : ''">
+              <span class="icon">💬</span><span class="nav-label">用户反馈</span>
             </router-link>
           </div>
         </nav>
       </aside>
 
-      <main class="main-content">
+      <main class="main-content" :style="{ height: 'calc(100vh - ' + (headerCollapsed ? 18 : 60) + 'px)' }">
         <router-view />
       </main>
     </div>
@@ -85,7 +96,19 @@ const route = useRoute()
 const auth = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'ADMIN')
 const unreadCount = ref(0)
+const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true')
+const headerCollapsed = ref(localStorage.getItem('header_collapsed') === 'true')
 let pollTimer = null
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('sidebar_collapsed', sidebarCollapsed.value)
+}
+
+function toggleHeader() {
+  headerCollapsed.value = !headerCollapsed.value
+  localStorage.setItem('header_collapsed', headerCollapsed.value)
+}
 
 async function fetchUnread() {
   try {
@@ -119,18 +142,64 @@ onBeforeUnmount(() => {
 }
 
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-header);
+  border-bottom: 2px solid var(--primary);
+  box-shadow: 0 2px 12px var(--shadow);
+  overflow: hidden;
+  transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+  height: 60px;
+}
+
+.header.collapsed {
+  height: 18px;
+}
+
+.header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
   height: 60px;
-  background: var(--bg-header);
-  border-bottom: 2px solid var(--primary);
-  box-shadow: 0 2px 12px var(--shadow);
-  position: sticky;
-  top: 0;
-  z-index: 100;
   flex-shrink: 0;
+}
+
+/* 收起/展开箭头按钮 */
+.header-toggle {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 14px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+  z-index: 101;
+}
+.header.collapsed .header-toggle {
+  bottom: auto;
+  top: 0;
+  height: 18px;
+  border-radius: 0 0 8px 8px;
+  border-top: none;
+}
+.header-toggle:hover {
+  color: var(--primary);
+  background: var(--bg-hover);
 }
 
 .logo {
@@ -143,19 +212,15 @@ onBeforeUnmount(() => {
   color: var(--text-main);
   transition: opacity 0.2s;
 }
-
 .logo:hover { opacity: 0.8; }
-
 .logo-icon {
   font-size: 1.4rem;
   animation: float 3s ease-in-out infinite;
 }
-
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
 }
-
 .logo-text {
   background: linear-gradient(90deg, var(--primary), var(--primary-light));
   -webkit-background-clip: text;
@@ -168,18 +233,15 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 1.5rem;
 }
-
 .user-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
-
 .username {
   font-weight: 600;
   color: var(--text-main);
 }
-
 .role-badge {
   padding: 0.2rem 0.7rem;
   border-radius: 20px;
@@ -188,12 +250,10 @@ onBeforeUnmount(() => {
   background: var(--tag-bg);
   color: var(--text-sub);
 }
-
 .role-badge.admin {
   background: linear-gradient(90deg, var(--primary), var(--primary-light));
   color: #fff;
 }
-
 .logout-btn {
   padding: 0.45rem 1.1rem;
   background: linear-gradient(90deg, var(--primary), var(--primary-light));
@@ -205,7 +265,6 @@ onBeforeUnmount(() => {
   transition: opacity 0.2s, transform 0.2s;
   font-size: 0.9rem;
 }
-
 .logout-btn:hover {
   opacity: 0.85;
   transform: translateY(-1px);
@@ -215,7 +274,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 1;
   overflow: hidden;
-  min-height: calc(100vh - 60px);
+  transition: margin-top 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
 .sidebar {
@@ -224,19 +283,60 @@ onBeforeUnmount(() => {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  padding: 1.5rem 0;
+  overflow-x: hidden;
+  padding: 0.75rem 0;
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1), height 0.25s cubic-bezier(0.4,0,0.2,1);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+.sidebar.collapsed { width: 52px; }
+
+.sidebar-toggle {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0.25rem 0.5rem 0.75rem auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 28px;
+  text-align: center;
+}
+.sidebar-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
-.nav-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.sidebar.collapsed .nav-label { display: none; }
+.sidebar.collapsed .group-title { display: none; }
+.sidebar.collapsed .nav-badge { display: none; }
+.sidebar.collapsed .sidebar-toggle { margin-left: 0.5rem; }
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 0.65rem;
+  border-left: 3px solid transparent;
+}
+.sidebar.collapsed .nav-item .icon { width: auto; font-size: 1.25rem; }
+
+.nav-badge-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  background: #e53935;
+  border-radius: 50%;
 }
 
-.nav-group {
-  padding: 0.25rem 0;
-}
-
+.nav-menu { display: flex; flex-direction: column; gap: 0.25rem; }
+.nav-group { padding: 0.25rem 0; }
 .group-title {
   padding: 0.5rem 1.25rem;
   font-size: 0.7rem;
@@ -245,7 +345,6 @@ onBeforeUnmount(() => {
   letter-spacing: 1px;
   color: var(--text-muted);
 }
-
 .nav-item {
   display: flex;
   align-items: center;
@@ -258,20 +357,17 @@ onBeforeUnmount(() => {
   border-left: 3px solid transparent;
   transition: all 0.2s;
 }
-
 .nav-item:hover {
   color: var(--primary);
   background: var(--bg-hover);
   border-left-color: var(--primary);
 }
-
 .nav-item.active {
   color: var(--primary);
   background: var(--bg-hover);
   border-left-color: var(--primary);
   font-weight: 600;
 }
-
 .nav-item .icon { font-size: 1.1rem; width: 1.4rem; text-align: center; }
 .nav-badge { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #e53935; color: #fff; border-radius: 999px; font-size: 0.68rem; font-weight: 700; }
 
@@ -280,5 +376,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: 2rem;
   background: var(--bg-base);
+  box-sizing: border-box;
+  transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 </style>

@@ -132,35 +132,40 @@
     <div v-if="showMineModal" class="modal-overlay" @click.self="showMineModal = false">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>{{ editingMine ? '编辑素材' : '新建素材' }}</h2>
+          <div class="modal-header-left">
+            <span class="modal-icon">{{ editingMine ? '✏️' : '＋' }}</span>
+            <h2>{{ editingMine ? '编辑素材' : '新建素材' }}</h2>
+          </div>
           <button class="close-btn" @click="showMineModal = false">✕</button>
         </div>
         <div class="modal-body">
-          <div class="form-group">
-            <label>分类 *</label>
-            <select v-model="mineForm.category" class="form-select">
-              <option value="">请选择</option>
-              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-            </select>
+          <div class="form-row">
+            <div class="form-group form-group-sm">
+              <label>分类 <span class="req">*</span></label>
+              <select v-model="mineForm.category" class="form-select">
+                <option value="">请选择分类</option>
+                <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="form-group form-group-grow">
+              <label>标题 <span class="req">*</span></label>
+              <input v-model="mineForm.title" type="text" placeholder="请输入素材标题" class="form-input" />
+            </div>
           </div>
           <div class="form-group">
-            <label>标题 *</label>
-            <input v-model="mineForm.title" type="text" placeholder="素材标题" class="form-input" />
+            <label>内容 <span class="req">*</span></label>
+            <textarea v-model="mineForm.content" rows="16" placeholder="请输入素材正文内容，支持长文撰写..." class="form-input form-textarea" />
           </div>
           <div class="form-group">
-            <label>内容 *</label>
-            <textarea v-model="mineForm.content" rows="8" placeholder="素材内容..." class="form-input" />
-          </div>
-          <div class="form-group">
-            <label>标签（逗号分隔）</label>
-            <input v-model="mineForm.tags" type="text" placeholder="如：战役,将领" class="form-input" />
+            <label>标签 <span class="form-hint">多个标签用逗号分隔（可选）</span></label>
+            <input v-model="mineForm.tags" type="text" placeholder="如：战役,将领,汉代" class="form-input" />
           </div>
           <p v-if="mineError" class="error">{{ mineError }}</p>
         </div>
         <div class="modal-footer">
           <button @click="showMineModal = false" class="btn-secondary">取消</button>
-          <button @click="saveMine('draft')" :disabled="mineSaving" class="btn-secondary">保存草稿</button>
-          <button @click="saveMine('submit')" :disabled="mineSaving" class="btn-primary">{{ mineSaving ? '提交中...' : '保存并提交审核' }}</button>
+          <button @click="saveMine('draft')" :disabled="mineSaving" class="btn-secondary">💾 保存草稿</button>
+          <button @click="saveMine('submit')" :disabled="mineSaving" class="btn-primary">{{ mineSaving ? '提交中...' : '📤 保存并提交审核' }}</button>
         </div>
       </div>
     </div>
@@ -671,24 +676,33 @@ onMounted(() => { loadCategories(); loadFavorites() })
 .pending-hint { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
 
 /* 弹窗 */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal-content { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 90%; max-width: 640px; box-shadow: 0 16px 48px var(--shadow); }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
-.modal-header h2 { margin: 0; color: var(--text-main); font-size: 1.1rem; }
-.close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; }
-.close-btn:hover { color: var(--primary); }
-.modal-body { padding: 1.5rem; max-height: 60vh; overflow-y: auto; }
-.modal-footer { display: flex; gap: 0.75rem; padding: 1.25rem 1.5rem; border-top: 1px solid var(--border); justify-content: flex-end; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+.modal-content { background: #f7f4ee; border: 1px solid #d8cfc0; border-radius: 16px; width: 100%; max-width: 820px; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgba(0,0,0,0.22); overflow: hidden; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.2rem 1.75rem; border-bottom: 1px solid #e0d8cc; background: #f0ebe1; flex-shrink: 0; }
+.modal-header-left { display: flex; align-items: center; gap: 0.6rem; }
+.modal-icon { font-size: 1.2rem; }
+.modal-header h2 { margin: 0; color: #2c2416; font-size: 1.1rem; font-weight: 700; }
+.close-btn { background: transparent; border: none; color: #8a7d6a; font-size: 1.3rem; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 5px; line-height: 1; transition: all 0.15s; }
+.close-btn:hover { color: #c0392b; background: rgba(192,57,43,0.1); }
+.modal-body { padding: 1.5rem 1.75rem; overflow-y: auto; flex: 1; background: #f7f4ee; }
+.modal-footer { display: flex; gap: 0.75rem; padding: 1rem 1.75rem; border-top: 1px solid #e0d8cc; justify-content: flex-end; background: #f0ebe1; flex-shrink: 0; }
+.form-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
 .form-group { margin-bottom: 1rem; }
-.form-group label { display: block; margin-bottom: 0.35rem; font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
-.form-select { width: 100%; padding: 0.55rem 0.9rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.9rem; }
-.form-select:focus { outline: none; border-color: var(--primary); }
-.form-input { width: 100%; padding: 0.55rem 0.9rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
-.form-input:focus { outline: none; border-color: var(--primary); }
-textarea.form-input { resize: vertical; }
-.error { color: #e53935; font-size: 0.85rem; margin-top: 0.5rem; }
-.btn-primary { padding: 0.55rem 1.2rem; border-radius: 7px; border: none; background: linear-gradient(90deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
+.form-group-sm { flex: 0 0 200px; min-width: 160px; }
+.form-group-grow { flex: 1; }
+.form-group label { display: block; margin-bottom: 0.4rem; font-size: 0.85rem; font-weight: 700; color: #3d3124; }
+.req { color: #c0392b; margin-left: 2px; }
+.form-hint { font-weight: 400; font-size: 0.78rem; color: #8a7d6a; margin-left: 0.4rem; }
+.form-select { width: 100%; padding: 0.6rem 0.9rem; border: 1.5px solid #c8bfb0; border-radius: 8px; background: #fff; color: #2c2416; font-size: 0.9rem; transition: border-color 0.2s; }
+.form-select:focus { outline: none; border-color: #8b6914; box-shadow: 0 0 0 3px rgba(139,105,20,0.12); }
+.form-input { width: 100%; padding: 0.6rem 0.9rem; border: 1.5px solid #c8bfb0; border-radius: 8px; background: #fff; color: #2c2416; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; transition: border-color 0.2s; }
+.form-input:focus { outline: none; border-color: #8b6914; box-shadow: 0 0 0 3px rgba(139,105,20,0.12); }
+.form-textarea { resize: vertical; min-height: 360px; line-height: 1.85; letter-spacing: 0.02em; }
+.error { color: #c0392b; font-size: 0.85rem; margin-top: 0.5rem; background: rgba(192,57,43,0.07); padding: 0.4rem 0.7rem; border-radius: 6px; border-left: 3px solid #c0392b; }
+.btn-primary { padding: 0.6rem 1.4rem; border-radius: 8px; border: none; background: linear-gradient(135deg, #8b6914, #b8860b); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s; }
+.btn-primary:hover { opacity: 0.88; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-secondary { padding: 0.55rem 1.2rem; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); font-size: 0.9rem; cursor: pointer; }
-.btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+.btn-secondary { padding: 0.6rem 1.2rem; border-radius: 8px; border: 1.5px solid #c8bfb0; background: #fff; color: #5a4e3c; font-size: 0.9rem; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+.btn-secondary:hover { border-color: #8b6914; color: #8b6914; background: #fdf8ef; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

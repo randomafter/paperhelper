@@ -14,41 +14,41 @@
 
         <!-- 素材库面板 -->
         <template v-if="sidePanel === 'material'">
-          <div class="source-tabs">
-            <button :class="{ active: matSource === 'search' }" @click="matSource = 'search'">检索</button>
-            <button :class="{ active: matSource === 'favorite' }" @click="matSource = 'favorite'; loadFavMats()">收藏</button>
-          </div>
-          <div v-if="matSource === 'search'" class="search-area">
-            <select v-model="matCategory" class="mat-select">
-              <option value="">全部分类</option>
-              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-            </select>
-            <input v-model="matKeyword" placeholder="搜索素材..." class="mat-search" @keyup.enter="searchMats" />
-            <button @click="searchMats" class="btn-search-sm">搜索</button>
-          </div>
-          <div v-if="matSource === 'favorite'" class="search-area">
-            <input v-model="favSearch" placeholder="在收藏中搜索..." class="mat-search" />
-          </div>
-          <div class="mat-loading" v-if="matLoading">加载中...</div>
-          <div class="mat-empty" v-else-if="displayMats.length === 0">暂无素材</div>
-          <div class="mat-list" v-else>
-            <div v-for="item in displayMats" :key="item.id" class="mat-item" :class="{ inserting: insertingId === item.id }">
-              <div class="mat-item-top">
-                <span class="mat-cat">{{ item.category }}</span>
-                <div class="mat-actions">
+        <div class="source-tabs">
+          <button :class="{ active: matSource === 'search' }" @click="matSource = 'search'">检索</button>
+          <button :class="{ active: matSource === 'favorite' }" @click="matSource = 'favorite'; loadFavMats()">收藏</button>
+        </div>
+        <div v-if="matSource === 'search'" class="search-area">
+          <select v-model="matCategory" class="mat-select">
+            <option value="">全部分类</option>
+            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <input v-model="matKeyword" placeholder="搜索素材..." class="mat-search" @keyup.enter="searchMats" />
+          <button @click="searchMats" class="btn-search-sm">搜索</button>
+        </div>
+        <div v-if="matSource === 'favorite'" class="search-area">
+          <input v-model="favSearch" placeholder="在收藏中搜索..." class="mat-search" />
+        </div>
+        <div class="mat-loading" v-if="matLoading">加载中...</div>
+        <div class="mat-empty" v-else-if="displayMats.length === 0">暂无素材</div>
+        <div class="mat-list" v-else>
+          <div v-for="item in displayMats" :key="item.id" class="mat-item" :class="{ inserting: insertingId === item.id }">
+            <div class="mat-item-top">
+              <span class="mat-cat">{{ item.category }}</span>
+              <div class="mat-actions">
                   <button @click="applyToAI(item)" class="btn-ai-apply" :class="{ active: boundMats.some(m => m.id === item.id) }" title="绑定到AI">✦ AI</button>
-                  <button @click="insertMat(item)" class="btn-insert">插入</button>
-                </div>
+                <button @click="insertMat(item)" class="btn-insert">插入</button>
               </div>
-              <div class="mat-title" @click="openMatDetail(item)" style="cursor:pointer">{{ item.title }}</div>
-              <div class="mat-preview">{{ item.content?.slice(0,60) }}{{ (item.content?.length||0)>60?'...':'' }}</div>
             </div>
-            <div v-if="matSource==='search' && matTotalPages>1" class="mat-pagination">
-              <button @click="prevMatPage" :disabled="matPage<=1">‹</button>
-              <span>{{ matPage }}/{{ matTotalPages }}</span>
-              <button @click="nextMatPage" :disabled="matPage>=matTotalPages">›</button>
-            </div>
+            <div class="mat-title" @click="openMatDetail(item)" style="cursor:pointer">{{ item.title }}</div>
+            <div class="mat-preview">{{ item.content?.slice(0,60) }}{{ (item.content?.length||0)>60?'...':'' }}</div>
           </div>
+          <div v-if="matSource==='search' && matTotalPages>1" class="mat-pagination">
+            <button @click="prevMatPage" :disabled="matPage<=1">‹</button>
+            <span>{{ matPage }}/{{ matTotalPages }}</span>
+            <button @click="nextMatPage" :disabled="matPage>=matTotalPages">›</button>
+          </div>
+        </div>
         </template>
 
         <!-- 大纲面板 -->
@@ -120,7 +120,6 @@
           <button @click="clearEditor" class="btn-tool">清空</button>
           <button @click="copyAll" class="btn-tool">复制</button>
           <button @click="focusMode = !focusMode" class="btn-tool" :class="{ active: focusMode }" title="专注模式">{{ focusMode ? '退出专注' : '专注' }}</button>
-          <span class="word-count">{{ wordCount }} 字</span>
         </div>
       </div>
 
@@ -194,162 +193,88 @@
         @keyup="handleEditorSelect"
       ></textarea>
 
-      <!-- 选中文本浮动工具栏 -->
+      <!-- 选中文本浮动工具栏（行内 AI 操作） -->
       <div v-if="selectionToolbar.show" class="selection-toolbar"
         :style="{ top: selectionToolbar.y + 'px', left: selectionToolbar.x + 'px' }">
-        <button @click="quickPolish" class="sel-toolbar-btn polish">✨ 润色</button>
+        <button @click="inlineAction('polish')" class="sel-toolbar-btn polish" :disabled="inlineLoading" title="润色">✨ 润色</button>
         <div class="sel-toolbar-divider"></div>
-        <button @click="quickCheck" class="sel-toolbar-btn check">⚠️ 检测</button>
+        <button @click="inlineAction('expand')" class="sel-toolbar-btn expand" :disabled="inlineLoading" title="扩写">📝 扩写</button>
+        <div class="sel-toolbar-divider"></div>
+        <button @click="inlineAction('rewrite')" class="sel-toolbar-btn rewrite" :disabled="inlineLoading" title="改写">🔄 改写</button>
+        <div class="sel-toolbar-divider"></div>
+        <button @click="inlineAction('check')" class="sel-toolbar-btn check" :disabled="inlineLoading" title="检测">⚠️ 检测</button>
         <div class="sel-toolbar-divider"></div>
         <button @click="selectionToolbar.show = false" class="sel-toolbar-close">✕</button>
       </div>
 
-      <!-- 悬浮 AI 助手 -->
-      <div class="ai-float-wrap">
-        <button class="ai-float-btn" @click="aiPanelOpen = !aiPanelOpen" :class="{ active: aiPanelOpen }" title="历史 AI 助手">
-          <span>✦</span><span>AI</span>
+      <!-- / 指令菜单 -->
+      <div v-if="slashMenu.show" class="slash-menu"
+        :style="{ top: slashMenu.y + 'px', left: slashMenu.x + 'px' }">
+        <div class="slash-menu-header">⚡ AI 指令</div>
+        <button v-for="(cmd, idx) in slashCommands" :key="cmd.key"
+          class="slash-cmd"
+          :class="{ active: slashMenu.activeIdx === idx }"
+          @mousedown.prevent="runSlashCommand(cmd)">
+          <span class="slash-cmd-icon">{{ cmd.icon }}</span>
+          <div class="slash-cmd-info">
+            <span class="slash-cmd-label">{{ cmd.label }}</span>
+            <span class="slash-cmd-desc">{{ cmd.desc }}</span>
+          </div>
         </button>
-        <transition name="ai-pop">
-        <div v-if="aiPanelOpen" class="ai-float-panel">
-          <div class="ai-fp-header">
-            <span class="ai-fp-title">✦ 历史助手</span>
-            <button class="ai-fp-close" @click="aiPanelOpen = false">✕</button>
           </div>
-          <!-- 已绑定素材列表 -->
-          <div v-if="boundMats.length" class="ai-fp-bound-area">
-            <div class="ai-fp-bound-header">
-              <span class="ai-fp-bound-label">📎 已绑定素材（{{ boundMats.length }}/5）</span>
-              <button @click="boundMats = []" class="ai-fp-bound-clearall">全清</button>
-            </div>
-            <div class="ai-fp-bound-list">
-              <span v-for="mat in boundMats" :key="mat.id" class="ai-fp-bound-chip">
-                <span class="ai-fp-bound-chip-name">{{ mat.title }}</span>
-                <button @click="boundMats.splice(boundMats.indexOf(mat),1)" class="ai-fp-bound-chip-del">✕</button>
-              </span>
-            </div>
+
+      <!-- 行内 AI 生成结果预览条 -->
+      <transition name="inline-ai">
+      <div v-if="inlineResult.show" class="inline-ai-bar">
+        <div class="inline-ai-bar-top">
+          <span class="inline-ai-label">
+            <span v-if="inlineLoading" class="inline-ai-dot loading"></span>
+            <span v-else class="inline-ai-dot"></span>
+            {{ inlineLoading ? 'AI 生成中...' : 'AI 结果预览' }}
+          </span>
+          <div class="inline-ai-actions" v-if="!inlineLoading">
+            <button @click="acceptInline" class="inline-accept">✓ 接受</button>
+            <button @click="retryInline" class="inline-retry">↺ 重试</button>
+            <button @click="discardInline" class="inline-discard">✕ 放弃</button>
           </div>
-          <div v-else class="ai-fp-bound-empty">
-            <span>从左侧素材点击「✦ AI」可绑定素材（最多5个）</span>
-          </div>
-          <div class="ai-fp-tabs">
-            <button v-for="t in aiTabs" :key="t.key" :class="{ active: aiTab === t.key }" @click="aiTab = t.key; aiResult = ''; aiError = ''">{{ t.icon }} {{ t.label }}</button>
-          </div>
-          <div class="ai-fp-body">
-            <div v-if="aiTab === 'scene'" class="ai-fp-form">
-              <input v-model="sceneInput" class="ai-fp-input" placeholder="场景要素，如：盛唐曲江池，暮春，贵族宴饮" />
-              <select v-model="sceneStyle" class="ai-fp-input">
-                <option value="典雅">典雅古风</option><option value="清丽">清丽婉约</option>
-                <option value="雄浑">雄浑壮阔</option><option value="写实">写实细腻</option>
-              </select>
-              <button @click="runScene" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '生成中...' : '生成描写' }}</button>
             </div>
-            <div v-if="aiTab === 'continue'" class="ai-fp-form">
-              <p class="ai-fp-hint">将自动读取编辑器末尾 600 字作为上文进行续写</p>
-              <select v-model="continueStyle" class="ai-fp-input">
-                <option value="典雅">典雅古风</option><option value="清丽">清丽婉约</option>
-                <option value="雄浑">雄浑壮阔</option><option value="写实">写实细腻</option>
-              </select>
-              <div class="continue-words-row">
-                <span class="ai-fp-sublabel">续写字数：</span>
-                <button v-for="w in [100, 200, 400, 800]" :key="w"
-                  @click="continueWords = w"
-                  class="words-btn" :class="{ active: continueWords === w }">{{ w }}字</button>
+        <pre v-if="inlineOptions.length <= 1" class="inline-ai-text">{{ inlineResult.text }}</pre>
+        <div v-else class="inline-options-list">
+          <div v-for="(opt, idx) in inlineOptions" :key="idx" class="inline-option-item">
+            <div class="inline-option-hd">
+              <span class="inline-option-num">方案 {{ idx + 1 }}</span>
+              <button @click="acceptOption(idx)" class="inline-accept">✓ 选用此方案</button>
+            </div>
+            <pre class="inline-option-text">{{ opt }}</pre>
+            </div>
+            </div>
               </div>
-              <div class="ai-fp-section">
-                <label class="ai-fp-sublabel">
-                  📋 故事大纲
-                  <span v-if="pinnedOutline" class="pin-badge">已锁定</span>
-                  <span v-else class="pin-badge-off">未设置</span>
-                </label>
-                <textarea v-model="pinnedOutline" class="ai-fp-textarea" rows="3"
-                  placeholder="粘贴故事大纲，锁定后AI续写将参考此大纲走向..."></textarea>
-              </div>
-              <div class="ai-fp-section">
-                <label class="ai-fp-sublabel">
-                  👤 人物设定
-                  <span v-if="charProfiles" class="pin-badge">已填写</span>
-                </label>
-                <textarea v-model="charProfiles" class="ai-fp-textarea" rows="2"
-                  placeholder="主要人物性格、身份，如：李明远，寒门举子，沉稳内敛，擅长权谋..."></textarea>
-              </div>
-              <button @click="runContinue" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '续写中...' : '开始续写 ' + continueWords + '字' }}</button>
-            </div>
-            <div v-if="aiTab === 'polish'" class="ai-fp-form">
-              <textarea v-model="polishText" class="ai-fp-textarea" placeholder="粘贴要润色的文段"></textarea>
-              <button @click="polishText = editorContent.slice(0,600)" class="ai-fp-ghost">引用当前文章（前600字）</button>
-              <button @click="runPolish" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '润色中...' : '开始润色' }}</button>
-            </div>
-            <div v-if="aiTab === 'rewrite'" class="ai-fp-form">
-              <textarea v-model="rewriteText" class="ai-fp-textarea" placeholder="粘贴要改写的原文"></textarea>
-              <button @click="rewriteText = editorContent.slice(0,600)" class="ai-fp-ghost">引用当前文章（前600字）</button>
-              <input v-model="rewriteReq" class="ai-fp-input" placeholder="改写要求，如：扩写到500字、改为第一人称、增加环境描写" />
-              <button @click="runRewrite" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '改写中...' : '开始改写' }}</button>
-            </div>
-            <div v-if="aiTab === 'dialogue'" class="ai-fp-form">
-              <input v-model="dialogueChars" class="ai-fp-input" placeholder="人物设定，如：李白（豪放不羁）与杜甫（沉郁忧国）" />
-              <input v-model="dialogueScene" class="ai-fp-input" placeholder="场景，如：长安酒肆，秋夜，初次相遇" />
-              <button @click="runDialogue" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '生成中...' : '生成对话' }}</button>
-            </div>
-            <div v-if="aiTab === 'outline'" class="ai-fp-form">
-              <textarea v-model="outlineStory" class="ai-fp-textarea" placeholder="故事梗概，如：盛唐背景，一名寒门学子进京赶考，卷入朝廷党争..."></textarea>
-              <button @click="outlineStory = editorContent.slice(0,400)" class="ai-fp-ghost">引用当前文章作为梗概</button>
-              <button @click="runOutline" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '生成中...' : '生成大纲' }}</button>
-            </div>
-            <div v-if="aiTab === 'title'" class="ai-fp-form">
-              <p class="ai-fp-hint">将自动读取当前文章内容生成标题，也可手动输入内容</p>
-              <textarea v-model="titleContent" class="ai-fp-textarea" placeholder="（留空则自动使用当前文章内容）"></textarea>
-              <button @click="runTitle" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '生成中...' : '生成5个标题' }}</button>
-            </div>
-            <div v-if="aiTab === 'check'" class="ai-fp-form">
-              <textarea v-model="checkText" class="ai-fp-textarea" placeholder="粘贴要检测的文段"></textarea>
-              <button @click="checkText = editorContent.slice(0,800)" class="ai-fp-ghost">引用当前文章（前800字）</button>
-              <button @click="runCheck" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '检测中...' : '检测错误' }}</button>
-            </div>
-            <div v-if="aiTab === 'detail'" class="ai-fp-form">
-              <input v-model="detailQ" class="ai-fp-input" placeholder="如：唐代七品官年俸是多少？" @keyup.enter="runDetail" />
-              <button @click="runDetail" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '查询中...' : '查询' }}</button>
-            </div>
-            <div v-if="aiTab === 'context'" class="ai-fp-form">
-              <input v-model="ctxYear" class="ai-fp-input" placeholder="年份，如：627（贞观元年）" />
-              <input v-model="ctxPlace" class="ai-fp-input" placeholder="地点，如：长安城东市" />
-              <button @click="runContext" :disabled="aiLoading" class="ai-fp-run">{{ aiLoading ? '查询中...' : '生成时空背景' }}</button>
-            </div>
-            <div v-if="aiTab === 'history'" class="ai-fp-form">
-              <div class="ai-history-bar">
-                <span class="ai-history-count">共 {{ aiHistory.length }} 条记录</span>
-                <button v-if="aiHistory.length" @click="clearHistory" class="ai-fp-ghost">清空</button>
-              </div>
-              <div v-if="aiHistory.length === 0" class="ai-fp-hint">暂无历史记录</div>
-              <div v-for="item in aiHistory" :key="item.id" class="ai-history-item">
-                <div class="ai-history-meta">
-                  <span class="ai-history-tab">{{ aiTabs.find(t=>t.key===item.tab)?.icon }} {{ aiTabs.find(t=>t.key===item.tab)?.label }}</span>
-                  <span class="ai-history-time">{{ item.time }}</span>
-                </div>
-                <div class="ai-history-preview">{{ item.result.slice(0, 80) }}{{ item.result.length > 80 ? '...' : '' }}</div>
-                <button @click="aiResult = item.result; aiTab = item.tab" class="ai-fp-ghost">重新查看</button>
-              </div>
-            </div>
-            <div v-if="aiLoading" class="ai-fp-loading"><div class="ai-fp-spinner"></div><span>星火思考中...</span></div>
-            <div v-if="aiError" class="ai-fp-error">{{ aiError }}</div>
-            <div v-if="aiResult" class="ai-fp-result">
-              <div class="ai-fp-result-bar">
-                <span>AI 结果</span>
-                <div><button @click="insertAiResult" class="ai-fp-insert">全部插入</button><button @click="aiResult='';aiError=''" class="ai-fp-clear">清除</button></div>
-              </div>
-              <div v-if="aiResultParagraphs.length > 1" class="ai-fp-paragraphs">
-                <div v-for="(para, idx) in aiResultParagraphs" :key="idx" class="ai-fp-para">
-                  <pre class="ai-fp-para-text">{{ para }}</pre>
-                  <button @click="insertAiParagraph(para)" class="ai-fp-insert-para">插入此段</button>
-                </div>
-              </div>
-              <pre v-else class="ai-fp-result-text">{{ aiResult }}</pre>
-            </div>
-          </div>
-        </div>
-        </transition>
-      </div>
+      </transition>
+
+    </div><!-- /editor-area -->
+
+  <!-- 右侧 AI 对话面板 -->
+  <div class="ai-sidebar" :class="{ collapsed: !aiPanelOpen }" :style="aiPanelOpen ? { width: aiPanelWidth + 'px' } : {}">
+    <div v-if="aiPanelOpen" class="ai-resize-handle" @mousedown="startAiResize"></div>
+    <div v-if="!aiPanelOpen" class="ai-sidebar-tab" @click="aiPanelOpen = true" title="展开 AI 对话">
+      <span class="ai-sidebar-tab-icon">✦</span>
+      <span class="ai-sidebar-tab-text">AI</span>
     </div>
-  </div>
+    <AIChatPanel
+      v-if="aiPanelOpen"
+      :bound-mats="boundMats"
+      :outline="pinnedOutline"
+      :chars="charProfiles"
+      :editor-content="editorContent"
+      :style-name="continueStyle"
+      :words="continueWords"
+      @update:outline="pinnedOutline = $event"
+      @update:chars="charProfiles = $event"
+      @update:bound-mats="boundMats = $event"
+      @accept-msg="handleAcceptMsg"
+    />
+  </div><!-- /ai-sidebar -->
+</div><!-- /workspace-shell -->
 
   <!-- 素材详情弹窗 -->
   <transition name="modal-fade">
@@ -378,13 +303,19 @@ import { useRouter, useRoute } from 'vue-router'
 import { materialApi } from '../api/material'
 import { userMaterialApi } from '../api/userMaterial'
 import { worksApi } from '../api/works'
+import AIChatPanel from '../components/AIChatPanel.vue'
 import { useWorkspaceStore } from '../stores/workspace'
-import axios from 'axios'
 
+// ═══════════════════════════════════════════════════════════
+// § 1. 路由 & Store
+// ═══════════════════════════════════════════════════════════
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 
+// ═══════════════════════════════════════════════════════════
+// § 2. 作品 & 编辑器基础状态
+// ═══════════════════════════════════════════════════════════
 const workId = ref(null)
 const saving = ref(false)
 const saveStatus = ref('')
@@ -393,12 +324,10 @@ const saveStatusText = computed(() =>
 )
 let autoSaveTimer = null
 let countdownTimer = null
-
-// 自动保存状态：idle / counting / saving / saved
-const autoSaveState = ref('idle')
+const autoSaveState = ref('idle')    // idle / counting / saving / saved
 const autoSaveProgress = ref(0)
 const autoSaveCountdown = ref(10)
-const AUTO_SAVE_DELAY = 10 // 秒
+const AUTO_SAVE_DELAY = 10           // 秒
 
 const docTitle = ref('')
 const editorContent = ref('')
@@ -407,20 +336,16 @@ const insertBanner = ref('')
 const insertingId = ref(null)
 const fontSize = ref(16)
 const lineHeightVal = ref('1.8')
+const focusMode = ref(false)
 
+// ═══════════════════════════════════════════════════════════
+// § 3. 左侧面板：素材库
+// ═══════════════════════════════════════════════════════════
 const sidebarCollapsed = ref(false)
-const matSource = ref('search')
+const sidePanel = ref('material')   // 'material' | 'outline'
+const matSource = ref('search')     // 'search' | 'favorite'
 const matCategory = ref('')
 const matKeyword = ref('')
-
-// 左侧面板主 Tab：素材库 / 大纲
-const sidePanel = ref('material') // 'material' | 'outline'
-
-// ── 大纲模块 ─────────────────────────────────────────────────
-const outlineChapters = ref([]) // { id, vol, title, summary, characters, status }
-const outlineEditId = ref(null)  // 正在编辑的章节 id
-const outlineForm = ref({ vol: '', title: '', summary: '', characters: '' })
-const outlineImporting = ref(false)
 const matLoading = ref(false)
 const searchResults = ref([])
 const matPage = ref(1)
@@ -429,17 +354,8 @@ const matPageSize = 10
 const matTotalPages = computed(() => Math.ceil(matTotal.value / matPageSize) || 1)
 const favorites = ref([])
 const favSearch = ref('')
-
 const categories = ref([])
-
-async function loadCategories() {
-  try {
-    const res = await import('../api/category').then(m => m.categoryApi.list())
-    if (res.data?.code === 200) categories.value = (res.data.data || []).map(c => c.name)
-  } catch(e) { console.error(e) }
-}
-
-const wordCount = computed(() => editorContent.value.replace(/\s/g,'').length)
+const matDetail = ref(null)
 
 const displayMats = computed(() => {
   if (matSource.value === 'favorite') {
@@ -450,6 +366,23 @@ const displayMats = computed(() => {
   }
   return searchResults.value
 })
+
+const wordCount = computed(() => editorContent.value.replace(/\s/g,'').length)
+
+async function loadCategories() {
+  try {
+    const res = await import('../api/category').then(m => m.categoryApi.list())
+    if (res.data?.code === 200) categories.value = (res.data.data || []).map(c => c.name)
+  } catch(e) { console.error(e) }
+}
+
+// ═══════════════════════════════════════════════════════════
+// § 4. 左侧面板：大纲模块
+// ═══════════════════════════════════════════════════════════
+const outlineChapters = ref([])  // { id, vol, title, summary, characters, status }
+const outlineEditId = ref(null)  // 当前编辑中的章节 id
+const outlineForm = ref({ vol: '', title: '', summary: '', characters: '' })
+const outlineImporting = ref(false)
 
 async function searchMats() {
   matLoading.value = true
@@ -496,6 +429,9 @@ async function loadFavMats() {
   } catch(e) { console.error(e) } finally { matLoading.value = false }
 }
 
+// ═══════════════════════════════════════════════════════════
+// § 13. 作品加载 & 保存 & 自动保存
+// ═══════════════════════════════════════════════════════════
 async function loadWork(id) {
   try {
     const res = await worksApi.get(id)
@@ -659,6 +595,9 @@ function redo() {
   nextTick(() => { isUndoRedo = false })
 }
 
+// ═══════════════════════════════════════════════════════════
+// § 8. 编辑器操作：格式插入辅助
+// ═══════════════════════════════════════════════════════════
 // ── 格式插入辅助 ─────────────────────────────────────────────
 function insertAtCursor(before, after = '') {
   const ta = editorRef.value; if (!ta) return
@@ -698,6 +637,9 @@ function insertChapterTitle() {
   setTimeout(() => { ta.focus(); ta.setSelectionRange(pos, pos) }, 0)
 }
 
+// ═══════════════════════════════════════════════════════════
+// § 9. 导出功能
+// ═══════════════════════════════════════════════════════════
 // ── 导出功能 ─────────────────────────────────────────────────
 function exportTxt() {
   const content = editorContent.value
@@ -752,8 +694,54 @@ async function exportDocx() {
   a.click(); URL.revokeObjectURL(url)
 }
 
+// ═══════════════════════════════════════════════════════════
+// § 11. 全局键盘快捷键 + / 指令菜单处理
+// ═══════════════════════════════════════════════════════════
 // ── 全局键盘快捷键 ───────────────────────────────────────────
 function handleKeydown(e) {
+  // / 指令菜单快捷键
+  if (e.key === '/' && !slashMenu.value.show) {
+    const ta = editorRef.value
+    if (!ta) return
+    const pos = ta.selectionStart
+    const before = editorContent.value.slice(0, pos)
+    const lastNewline = before.lastIndexOf('\n')
+    const lineStart = lastNewline + 1
+    const lineContent = before.slice(lineStart).trim()
+    
+    // 只在空行或行首显示菜单
+    if (lineContent === '') {
+      e.preventDefault()
+      const rect = ta.getBoundingClientRect()
+      const containerRect = ta.parentElement.getBoundingClientRect()
+      slashMenu.value = {
+        show: true,
+        x: Math.max(0, pos * 8 - containerRect.left),
+        y: rect.top - containerRect.top + 30,
+        activeIdx: 0
+      }
+      return
+    }
+  }
+  
+  // 菜单导航
+  if (slashMenu.value.show) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      slashMenu.value.activeIdx = (slashMenu.value.activeIdx + 1) % slashCommands.length
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      slashMenu.value.activeIdx = (slashMenu.value.activeIdx - 1 + slashCommands.length) % slashCommands.length
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      runSlashCommand(slashCommands[slashMenu.value.activeIdx])
+    } else if (e.key === 'Escape') {
+      slashMenu.value.show = false
+    }
+    return
+  }
+  
+  // 全局快捷键
   if (e.ctrlKey || e.metaKey) {
     switch(e.key.toLowerCase()) {
       case 's': e.preventDefault(); saveWork(); break
@@ -766,6 +754,90 @@ function handleKeydown(e) {
   }
 }
 
+function runQuickCommand(cmd) {
+  // 右侧面板快捷按钮调用：不依赖编辑器光标位置
+  inlineLoading.value = true
+  inlineResult.value = { show: true, text: '', action: cmd.key, start: 0 }
+  inlineSelStart.value = 0
+  inlineSelEnd.value = 0
+
+  let prompt = ''
+  const editorText = editorContent.value
+  if (cmd.key === 'continue') {
+    const text = editorText.slice(-600).trim()
+    if (!text) { inlineResult.value.text = '编辑器内容为空，无法续写'; inlineLoading.value = false; return }
+    prompt = PROMPTS.continue(text, continueStyle.value, continueWords.value, pinnedOutline.value, charProfiles.value)
+  } else if (cmd.key === 'scene') {
+    prompt = PROMPTS.scene('盛唐长安，春日午后', continueStyle.value)
+  } else if (cmd.key === 'dialogue') {
+    prompt = PROMPTS.dialogue(charProfiles.value || '李白与杜甫', '长安酒肆，初次相遇', pinnedOutline.value)
+  } else if (cmd.key === 'outline') {
+    const text = editorText.slice(0, 400).trim()
+    if (!text) { inlineResult.value.text = '编辑器内容为空，无法生成大纲'; inlineLoading.value = false; return }
+    prompt = PROMPTS.outline(text)
+  } else if (cmd.key === 'title') {
+    const text = editorText.trim()
+    if (!text) { inlineResult.value.text = '编辑器内容为空，无法生成标题'; inlineLoading.value = false; return }
+    prompt = PROMPTS.title(text)
+  }
+  if (!prompt) { inlineLoading.value = false; return }
+  callSpark(prompt, cmd.key)
+}
+
+function runSlashCommand(cmd) {
+  slashMenu.value.show = false
+  const ta = editorRef.value
+  if (!ta) return
+  
+  const pos = ta.selectionStart
+  const before = editorContent.value.slice(0, pos)
+  const lastNewline = before.lastIndexOf('\n')
+  const lineStart = lastNewline + 1
+  
+  // 删除 / 字符
+  editorContent.value = editorContent.value.slice(0, lineStart) + editorContent.value.slice(pos)
+  
+  inlineLoading.value = true
+  inlineResult.value = { show: true, text: '', action: cmd.key, start: lineStart }
+  inlineSelStart.value = lineStart
+  
+  let prompt = ''
+  if (cmd.key === 'continue') {
+    const text = editorContent.value.slice(-600).trim()
+    if (!text) {
+      inlineResult.value.text = '编辑器内容为空，无法续写'
+      inlineLoading.value = false
+      return
+    }
+    prompt = PROMPTS.continue(text, continueStyle.value, continueWords.value, pinnedOutline.value, charProfiles.value)
+  } else if (cmd.key === 'scene') {
+    prompt = PROMPTS.scene('盛唐长安，春日午后', continueStyle.value)
+  } else if (cmd.key === 'dialogue') {
+    prompt = PROMPTS.dialogue('李白与杜甫', '长安酒肆，初次相遇', pinnedOutline.value)
+  } else if (cmd.key === 'outline') {
+    const text = editorContent.value.slice(0, 400).trim()
+    if (!text) {
+      inlineResult.value.text = '编辑器内容为空，无法生成大纲'
+      inlineLoading.value = false
+      return
+    }
+    prompt = PROMPTS.outline(text)
+  } else if (cmd.key === 'title') {
+    const content = editorContent.value.trim()
+    if (!content) {
+      inlineResult.value.text = '编辑器内容为空，无法生成标题'
+      inlineLoading.value = false
+      return
+    }
+    prompt = PROMPTS.title(content)
+  }
+  
+  callSpark(prompt, cmd.key)
+}
+
+// ═══════════════════════════════════════════════════════════
+// § 10. 大纲操作函数
+// ═══════════════════════════════════════════════════════════
 // ── 大纲操作函数 ─────────────────────────────────────────────
 function addChapter() {
   outlineForm.value = { vol: '', title: '', summary: '', characters: '' }
@@ -920,8 +992,42 @@ watch(() => workspaceStore.pendingAI, (mat) => {
   }
 }, { immediate: true })
 
-// ── 历史助手 ──────────────────────────────────────────────────
-const aiPanelOpen = ref(false)
+// ═══════════════════════════════════════════════════════════
+// § 5. AI 上下文配置
+// ═══════════════════════════════════════════════════════════
+const aiPanelOpen = ref(true)
+const aiPanelWidth = ref(Number(localStorage.getItem('ai_panel_width')) || 300)
+const boundMats = ref([])
+const pinnedOutline = ref('')
+const charProfiles = ref('')
+const continueStyle = ref('典雅')
+const continueWords = ref(200)
+// 能实际发送给后端的素材数量（过滤 mine_ 前缀）
+const validBoundMatsCount = computed(() =>
+  boundMats.value.filter(m => /^\d+$/.test(String(m.id))).length
+)
+
+// 面板拖拽调宽
+function startAiResize(e) {
+  e.preventDefault()
+  const startX = e.clientX
+  const startW = aiPanelWidth.value
+  function onMove(ev) {
+    const delta = startX - ev.clientX
+    aiPanelWidth.value = Math.max(220, Math.min(520, startW + delta))
+  }
+  function onUp() {
+    localStorage.setItem('ai_panel_width', aiPanelWidth.value)
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+// ═══════════════════════════════════════════════════════════
+// § 6. AI 调用：旧面板表单状态（待重构，暂保留）
+// ═══════════════════════════════════════════════════════════
 const aiTab = ref('scene')
 const aiTabs = [
   { key: 'scene',    icon: '✍️', label: '生成情节' },
@@ -939,42 +1045,19 @@ const aiTabs = [
 const aiLoading = ref(false)
 const aiResult  = ref('')
 const aiError   = ref('')
-
-// 时空背景
-const ctxYear  = ref('')
-const ctxPlace = ref('')
-// 改写/扩写
-const rewriteText = ref('')
-const rewriteReq  = ref('')
-// 对话生成
+const ctxYear   = ref('')
+const ctxPlace  = ref('')
+const rewriteText   = ref('')
+const rewriteReq    = ref('')
 const dialogueChars = ref('')
 const dialogueScene = ref('')
-// 大纲生成
-const outlineStory = ref('')
-// 标题生成
-const titleContent = ref('')
-// 专注模式
-const focusMode = ref(false)
-// 穿越警报
-const checkText = ref('')
-// 细节查询
-const detailQ = ref('')
-// 环境描写
-const sceneInput = ref('')
-const sceneStyle = ref('典雅')
-// AI润色
-const polishText = ref('')
-// 智能续写
-const continueStyle = ref('典雅')
-const continueWords = ref(200)
-const pinnedOutline = ref('')
-const charProfiles = ref('')
-// 绑定素材（支持多个）
-const boundMats = ref([])
-const boundMat = computed(() => boundMats.value[0] || null) // 向后兼容
-// 素材详情弹窗
-const matDetail = ref(null)
-// AI历史记录
+const outlineStory  = ref('')
+const titleContent  = ref('')
+const checkText     = ref('')
+const detailQ       = ref('')
+const sceneInput    = ref('')
+const sceneStyle    = ref('典雅')
+const polishText    = ref('')
 const aiHistory = ref(JSON.parse(localStorage.getItem('ai_history') || '[]'))
 function saveToHistory(tab, prompt, result) {
   const item = { id: Date.now(), tab, prompt: prompt.slice(0, 100), result, time: new Date().toLocaleString('zh-CN') }
@@ -1004,8 +1087,46 @@ function openMatDetail(item) {
   matDetail.value = item
 }
 
+// AI 对话面板：接受消息插入编辑器
+function handleAcceptMsg({ content, mode }) {
+  if (mode === 'append') {
+    editorContent.value = editorContent.value.trimEnd() + '\n\n' + content + '\n'
+    insertBanner.value = '✓ 已追加到编辑器'
+  } else {
+    const ta = editorRef.value
+    if (ta && ta.selectionStart !== ta.selectionEnd) {
+      const s = ta.selectionStart, e = ta.selectionEnd
+      editorContent.value = editorContent.value.slice(0, s) + content + editorContent.value.slice(e)
+      insertBanner.value = '✓ 已替换选中区'
+    } else {
+      editorContent.value = editorContent.value.trimEnd() + '\n\n' + content + '\n'
+      insertBanner.value = '✓ 已追加到编辑器'
+    }
+  }
+  setTimeout(() => { insertBanner.value = '' }, 2500)
+}
+
 // 选中文本浮动工具栏
-const selectionToolbar = ref({ show: false, x: 0, y: 0, text: '' })
+// ═══════════════════════════════════════════════════════════
+// § 7. 行内 AI：选中工具栏 + / 指令菜单
+// ═══════════════════════════════════════════════════════════
+const selectionToolbar = ref({ show: false, x: 0, y: 0, text: '', start: 0, end: 0 })
+const inlineResult = ref({ show: false, text: '', action: '', start: 0 })
+const inlineOptions = ref([])
+const inlineLoading = ref(false)
+const inlineSelStart = ref(0)
+const inlineSelEnd = ref(0)
+
+const slashMenu = ref({ show: false, x: 0, y: 0, activeIdx: 0 })
+// AI 生成段落标记（记录每次 AI 插入的文本内容，用于侧边高亮）
+const aiSegments = ref([]) // [{ text: string, label: string }]
+const slashCommands = [
+  { key: 'continue', icon: '➡️', label: '续写', desc: '基于末尾 600 字续写' },
+  { key: 'scene',    icon: '✍️', label: '场景', desc: '生成环境描写' },
+  { key: 'dialogue', icon: '💬', label: '对话', desc: '生成人物对话' },
+  { key: 'outline',  icon: '📋', label: '大纲', desc: '生成分章大纲' },
+  { key: 'title',    icon: '📌', label: '标题', desc: '生成文章标题' },
+]
 
 function handleEditorSelect(e) {
   const ta = editorRef.value
@@ -1018,34 +1139,133 @@ function handleEditorSelect(e) {
     const containerRect = ta.parentElement.getBoundingClientRect()
     selectionToolbar.value = {
       show: true,
-      x: Math.min(e.clientX - containerRect.left, containerRect.width - 160),
-      y: e.clientY - containerRect.top - 44,
-      text: selected
+      x: Math.min(e.clientX - containerRect.left, containerRect.width - 200),
+      y: e.clientY - containerRect.top - 50,
+      text: selected,
+      start,
+      end
     }
   } else {
     selectionToolbar.value.show = false
   }
 }
 
-function quickPolish() {
+function inlineAction(action) {
   const text = selectionToolbar.value.text
   if (!text) return
   selectionToolbar.value.show = false
-  polishText.value = text
-  aiTab.value = 'polish'
-  aiPanelOpen.value = true
+  inlineSelStart.value = selectionToolbar.value.start
+  inlineSelEnd.value = selectionToolbar.value.end
+  inlineLoading.value = true
+  inlineResult.value = { show: true, text: '', action, start: inlineSelStart.value }
+  
+  let prompt = ''
+  if (action === 'polish') {
+    prompt = `你是专业的历史文学编辑。请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本，不加任何说明：\n\n${text}`
+  } else if (action === 'expand') {
+    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加细节描写和环境氛围，保持风格一致，直接返回扩写后的文本：\n\n${text}`
+  } else if (action === 'rewrite') {
+    prompt = `你是专业的历史文学编辑。请用不同的表达方式改写以下文段，保持原意但提升表现力，严格按以下格式返回3个方案，不要添加任何其他说明：
+===方案1===
+(第一种改写)
+===方案2===
+(第二种改写)
+===方案3===
+(第三种改写)
+
+原文：\n\n${text}`
+  } else if (action === 'check') {
+    prompt = `你是历史考证专家。请检查以下文段中的历史错误（食材、器物、词汇、制度等），按【错误点】格式列出，若无错误则回复"未发现明显错误"：\n\n${text}`
+  }
+  
+  callSpark(prompt, action)
 }
 
-function quickCheck() {
+function acceptInline() {
+  const newText = inlineResult.value.text
+  const action = inlineResult.value.action
+  const start = inlineSelStart.value
+  const end = inlineSelEnd.value
+  
+  if (action === 'check') {
+    // 检测结果只显示，不替换
+    inlineResult.value.show = false
+    return
+  }
+
+  // 生成类指令（续写/场景/对话/大纲/标题）：追加到文章末尾
+  const appendActions = ['continue', 'scene', 'dialogue', 'outline', 'title']
+  if (appendActions.includes(action)) {
+    const cur = editorContent.value
+    editorContent.value = cur.trimEnd() + '\n\n' + newText + '\n'
+    inlineResult.value.show = false
+    const labelMapA = { continue: '续写', scene: '场景', dialogue: '对话', outline: '大纲', title: '标题' }
+    aiSegments.value.push({ text: newText.trim(), label: labelMapA[action] || 'AI' })
+    insertBanner.value = '✓ 已插入到文章末尾'
+    setTimeout(() => { insertBanner.value = '' }, 2000)
+    return
+  }
+
+  // 替换类操作（润色/扩写/改写）：替换选中文本
+  editorContent.value = editorContent.value.slice(0, start) + newText + editorContent.value.slice(end)
+  // 记录 AI 修改段落
+  const labelMap2 = { polish: '润色', expand: '扩写', rewrite: '改写' }
+  aiSegments.value.push({ text: newText.trim(), label: labelMap2[action] || 'AI' })
+  inlineResult.value.show = false
+  insertBanner.value = `✓ 已${action === 'polish' ? '润色' : action === 'expand' ? '扩写' : '改写'}`
+  setTimeout(() => { insertBanner.value = '' }, 2000)
+}
+
+function acceptOption(idx) {
+  const opt = inlineOptions.value[idx]
+  if (!opt) return
+  const start = inlineSelStart.value
+  const end = inlineSelEnd.value
+  editorContent.value = editorContent.value.slice(0, start) + opt + editorContent.value.slice(end)
+  inlineOptions.value = []
+  inlineResult.value.show = false
+  insertBanner.value = '✓ 已选用方案 ' + (idx + 1)
+  setTimeout(() => { insertBanner.value = '' }, 2000)
+}
+
+
+function retryInline() {
+  inlineLoading.value = true
+  inlineResult.value.text = ''
   const text = selectionToolbar.value.text
-  if (!text) return
-  selectionToolbar.value.show = false
-  checkText.value = text
-  aiTab.value = 'check'
-  aiPanelOpen.value = true
+  const action = inlineResult.value.action
+  
+  let prompt = ''
+  if (action === 'polish') {
+    prompt = `你是专业的历史文学编辑。请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本，不加任何说明：\n\n${text}`
+  } else if (action === 'expand') {
+    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加细节描写和环境氛围，保持风格一致，直接返回扩写后的文本：\n\n${text}`
+  } else if (action === 'rewrite') {
+    prompt = `你是专业的历史文学编辑。请用不同的表达方式改写以下文段，保持原意但提升表现力，严格按以下格式返回3个方案，不要添加任何其他说明：
+===方案1===
+(第一种改写)
+===方案2===
+(第二种改写)
+===方案3===
+(第三种改写)
+
+原文：\n\n${text}`
+  } else if (action === 'check') {
+    prompt = `你是历史考证专家。请检查以下文段中的历史错误（食材、器物、词汇、制度等），按【错误点】格式列出，若无错误则回复"未发现明显错误"：\n\n${text}`
+  }
+  
+  callSpark(prompt, action)
+}
+
+function discardInline() {
+  inlineOptions.value = []
+  inlineResult.value.show = false
 }
 
 // 提示词模板
+// ═══════════════════════════════════════════════════════════
+// § 12. AI 调用核心（PROMPTS + callSpark + runXxx）
+// ═══════════════════════════════════════════════════════════
 const PROMPTS = {
   context: (year, place) =>
     `你是专业的中国历史顾问，服务于历史小说创作者。
@@ -1092,11 +1312,12 @@ ${text}
 
   continue: (text, style, wordCount, outline, chars) =>
     `你是擅长历史题材的文学作家，文风${style}。
-${outline ? '【当前故事大纲】\n' + outline + '\n\n' : ''}${chars ? '【主要人物设定】\n' + chars + '\n\n' : ''}请根据以下已有文段，续写约${wordCount || 200}字，要求：
+${outline ? '【当前故事大纲（必须严格遵循，续写情节不得偏离大纲走向）】\n' + outline + '\n\n' : ''}${chars ? '【主要人物设定（人物性格、身份必须与此一致）】\n' + chars + '\n\n' : ''}请根据以下已有文段，续写约${wordCount || 200}字，要求：
 - 风格、人称、视角与原文保持一致
-- 情节自然流畅，符合大纲走向（如有）
+- 情节必须基于大纲走向展开（如有大纲，须在续写末尾括号注明参考了哪一章节）
+- 若绑定了参考素材，须将素材中的历史细节自然融入续写，并在末尾标注 [素材引用: 素材标题]
 - 历史细节准确，不出现现代词汇
-- 直接输出续写内容，不加任何说明
+- 直接输出续写内容，末尾附引用标注
 
 已有文段（以下为正文末尾，请从此处自然续写）：
 ${text}`,
@@ -1141,16 +1362,29 @@ ${content.slice(0, 500)}`,
 }
 
 async function callSpark(prompt, tabKey) {
+  const isInline = ['polish', 'expand', 'rewrite', 'check', 'continue', 'scene', 'dialogue', 'outline', 'title'].includes(tabKey)
+  
+  if (isInline) {
+    inlineLoading.value = true
+    inlineResult.value.text = ''
+  } else {
   aiLoading.value = true
   aiResult.value = ''
   aiError.value = ''
-  const token = localStorage.getItem('token')
-  const payload = { prompt }
-  if (boundMats.value.length === 1) {
-    payload.materialId = boundMats.value[0].id
-  } else if (boundMats.value.length > 1) {
-    payload.materialIds = boundMats.value.map(m => m.id)
   }
+  
+    const token = localStorage.getItem('token')
+    const payload = { prompt }
+    // 过滤掉 mine_ 前缀的用户自建素材（id 非数字，后端 Long 类型无法解析）
+    const validBoundMats = boundMats.value.filter(m => {
+      const id = String(m.id)
+      return /^\d+$/.test(id)
+    })
+    if (validBoundMats.length === 1) {
+      payload.materialId = Number(validBoundMats[0].id)
+    } else if (validBoundMats.length > 1) {
+      payload.materialIds = validBoundMats.map(m => Number(m.id))
+    }
 
   try {
     const response = await fetch('/api/spark/stream', {
@@ -1165,11 +1399,19 @@ async function callSpark(prompt, tabKey) {
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
       const code = response.status
-      if (code === 429) aiError.value = '⏰ AI 调用过于频繁，请稍后再试'
-      else if (code === 403) aiError.value = '📊 AI 调用额度已用完，请联系管理员'
-      else if (code === 401) aiError.value = '🔑 登录已过期，请重新登录'
-      else aiError.value = err?.message || '生成失败，请稍后重试'
-      aiLoading.value = false
+      let errMsg = '生成失败，请稍后重试'
+      if (code === 429) errMsg = '⏰ AI 调用过于频繁，请稍后再试'
+      else if (code === 403) errMsg = '📊 AI 调用额度已用完，请联系管理员'
+      else if (code === 401) errMsg = '🔑 登录已过期，请重新登录'
+      else errMsg = err?.message || errMsg
+      
+      if (isInline) {
+        inlineLoading.value = false
+        inlineResult.value.text = errMsg
+    } else {
+        aiError.value = errMsg
+        aiLoading.value = false
+      }
       return
     }
 
@@ -1183,42 +1425,51 @@ async function callSpark(prompt, tabKey) {
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
-      buffer = lines.pop() // 保留未完整的行
+      buffer = lines.pop() ?? ''
       for (const line of lines) {
         const trimmed = line.trim()
-        if (trimmed.startsWith('event:error')) {
-          // 下一行的 data 是错误信息，暂存标记
-        } else if (trimmed.startsWith('data:')) {
+        if (trimmed.startsWith('data:')) {
           const data = trimmed.slice(5).trim()
           if (data === '[DONE]') {
-            // 流结束，保存历史
-            saveToHistory(tabKey || aiTab.value, prompt, aiResult.value)
-            aiLoading.value = false
+            if (isInline) {
+              const raw = inlineResult.value.text
+              const parts = raw.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
+              inlineOptions.value = parts.length > 1 ? parts : []
+              inlineLoading.value = false
+            } else {
+              if (aiResult.value) saveToHistory(tabKey, prompt, aiResult.value)
+              aiLoading.value = false
+            }
             return
           }
-          // 判断是否为错误事件的数据
-          if (aiError.value === '__error__') {
-            aiError.value = data
-            aiLoading.value = false
-            return
+          if (isInline) {
+            inlineResult.value.text += data
+          } else {
+            aiResult.value += data
           }
-          // 正常 chunk，追加到结果
-          aiResult.value += data
-        } else if (trimmed === 'event:error') {
-          aiError.value = '__error__' // 标记下一个 data 是错误
         }
       }
     }
-    // 流正常结束但未收到 [DONE]，也保存历史
-    if (aiResult.value) saveToHistory(tabKey || aiTab.value, prompt, aiResult.value)
-  } catch(e) {
-    if (!navigator.onLine) {
-      aiError.value = '📡 网络已断开，请检查网络连接'
+    // 流读完但未收到 [DONE]（网关截断等情况）的兜底
+    if (isInline) {
+      const raw2 = inlineResult.value.text
+      const parts2 = raw2.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
+      inlineOptions.value = parts2.length > 1 ? parts2 : []
+      inlineLoading.value = false
     } else {
-      aiError.value = '⚠️ 服务暂时不可用，请检查后端服务是否启动'
+      if (aiResult.value) saveToHistory(tabKey, prompt, aiResult.value)
+      aiLoading.value = false
     }
-  } finally {
-    aiLoading.value = false
+  } catch(e) {
+    const errMsg = !navigator.onLine ? '📡 网络已断开' : '⚠️ 服务暂时不可用'
+    if (isInline) {
+      inlineLoading.value = false
+      inlineResult.value.text = errMsg
+      // 错误时保持 show=true 让用户看到错误信息，但停止 loading
+    } else {
+      aiError.value = errMsg
+      aiLoading.value = false
+    }
   }
 }
 
@@ -1296,6 +1547,9 @@ function insertAiResult() {
   setTimeout(() => insertBanner.value = '', 2000)
 }
 
+// ═══════════════════════════════════════════════════════════
+// § 14. 生命周期
+// ═══════════════════════════════════════════════════════════
 onMounted(() => {
   const wid = route.query.workId
   if (wid) {
@@ -1313,9 +1567,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.workspace-shell { display: flex; height: calc(100vh - 60px); overflow: hidden; background: var(--bg-base); }
-
-/* 侧边栏 */
+.workspace-shell { display: flex; flex-direction: row; height: calc(100vh - 60px); overflow: hidden; background: var(--bg-base); }
+/* 右侧 AI 侧边栏：与 editor-area 并排 */
+.editor-area { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .material-sidebar { width: 270px; flex-shrink: 0; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.25s; overflow: hidden; }
 .material-sidebar.collapsed { width: 36px; }
 .sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -1471,46 +1725,156 @@ onBeforeUnmount(() => {
   );
   background-attachment: local;
 }
+
+/* 文字选中样式优化 - 柔和金色 */
+.editor-textarea::selection {
+  background-color: rgba(251,192,45,0.3);
+  color: inherit;
+}
+
+.editor-textarea::-moz-selection {
+  background-color: rgba(251,192,45,0.3);
+  color: inherit;
+}
 .selection-toolbar {
   position: absolute;
   z-index: 200;
   display: flex;
-  gap: 0;
+  gap: 0.2rem;
   align-items: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 12px;
-  padding: 0.45rem 0.6rem;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.06) inset;
+  background: linear-gradient(135deg, #f5f0e8 0%, #ede6d8 100%);
+  border: 1.5px solid #d8cfc0;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
   pointer-events: all;
-  gap: 0.3rem;
-  animation: toolbar-appear 0.18s cubic-bezier(0.34,1.56,0.64,1);
+  animation: toolbar-appear 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  backdrop-filter: blur(8px);
 }
+
 @keyframes toolbar-appear {
-  from { opacity: 0; transform: translateY(6px) scale(0.92); }
+  from { opacity: 0; transform: translateY(8px) scale(0.88); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.sel-toolbar-divider { width: 1px; height: 18px; background: rgba(255,255,255,0.12); margin: 0 0.1rem; }
+
+.sel-toolbar-divider { 
+  width: 1px; 
+  height: 20px; 
+  background: linear-gradient(to bottom, transparent, #c8bfb0, transparent);
+  margin: 0 0.15rem;
+  opacity: 0.6;
+}
+
 .sel-toolbar-btn {
-  display: flex; align-items: center; gap: 0.3rem;
-  font-size: 0.78rem; font-weight: 600;
-  padding: 0.35rem 0.75rem;
+  display: flex; 
+  align-items: center; 
+  gap: 0.35rem;
+  font-size: 0.8rem; 
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
   background: transparent;
-  color: rgba(255,255,255,0.85);
-  border: 1px solid transparent;
-  border-radius: 7px;
+  color: #3a2e1e;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   letter-spacing: 0.02em;
 }
+
 .sel-toolbar-btn:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.15);
-  color: #fff;
+  background: rgba(255,255,255,0.6);
+  border-color: #c8bfb0;
+  color: #2c2010;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-.sel-toolbar-btn.polish:hover { background: rgba(233,69,96,0.25); border-color: rgba(233,69,96,0.4); }
-.sel-toolbar-btn.check:hover  { background: rgba(255,193,7,0.18); border-color: rgba(255,193,7,0.35); color: #ffc107; }
+
+.sel-toolbar-btn:active {
+  transform: translateY(0);
+}
+
+.sel-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sel-toolbar-btn.polish:hover { 
+  background: linear-gradient(135deg, rgba(233,69,96,0.15), rgba(233,69,96,0.08));
+  border-color: rgba(233,69,96,0.3);
+  color: #c0392b;
+}
+
+.sel-toolbar-btn.expand:hover { 
+  background: linear-gradient(135deg, rgba(52,152,219,0.15), rgba(52,152,219,0.08));
+  border-color: rgba(52,152,219,0.3);
+  color: #2980b9;
+}
+
+.sel-toolbar-btn.rewrite:hover { 
+  background: linear-gradient(135deg, rgba(155,89,182,0.15), rgba(155,89,182,0.08));
+  border-color: rgba(155,89,182,0.3);
+  color: #8e44ad;
+}
+
+.sel-toolbar-btn.check:hover { 
+  background: linear-gradient(135deg, rgba(241,196,15,0.15), rgba(241,196,15,0.08));
+  border-color: rgba(241,196,15,0.3);
+  color: #d68910;
+}
+
+.sel-toolbar-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #8a7a65;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+  margin-left: 0.2rem;
+}
+
+.sel-toolbar-close:hover {
+  background: rgba(0,0,0,0.08);
+  color: #c0392b;
+}
+
+/* / 指令菜单 */
+.slash-menu { position: fixed; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 32px var(--shadow); z-index: 2000; min-width: 280px; max-height: 360px; overflow-y: auto; }
+.slash-menu-header { padding: 0.6rem 1rem; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+.slash-cmd { width: 100%; padding: 0.7rem 1rem; border: none; background: transparent; color: var(--text-main); text-align: left; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.15s; }
+.slash-cmd:hover, .slash-cmd.active { background: var(--bg-hover); }
+.slash-cmd-icon { font-size: 1.1rem; flex-shrink: 0; }
+.slash-cmd-info { flex: 1; min-width: 0; }
+.slash-cmd-label { display: block; font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
+.slash-cmd-desc { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+/* 行内 AI 结果预览条 */
+.inline-ai-bar { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px var(--shadow); z-index: 1500; max-width: 90%; width: 600px; max-height: 280px; display: flex; flex-direction: column; }
+.inline-ai-bar-top { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.inline-ai-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
+.inline-ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+.inline-ai-dot.loading { animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.inline-ai-actions { display: flex; gap: 0.5rem; }
+.inline-accept { padding: 0.35rem 0.8rem; border-radius: 6px; border: none; background: #10b981; color: #fff; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.inline-accept:hover { background: #059669; }
+.inline-retry { padding: 0.35rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.inline-retry:hover { border-color: var(--primary); color: var(--primary); }
+.inline-discard { padding: 0.35rem 0.8rem; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; }
+.inline-discard:hover { color: #ef4444; }
+.inline-ai-text { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+.inline-ai-enter { animation: slideUp 0.3s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.inline-ai-leave-active { animation: slideDown 0.2s ease; }
+@keyframes slideDown { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(20px); } }
 .sel-toolbar-close {
   font-size: 0.68rem; padding: 0.25rem 0.4rem;
   background: transparent; color: rgba(255,255,255,0.35);
@@ -1523,7 +1887,7 @@ onBeforeUnmount(() => {
 
 /* 专注模式：全屏覆盖整个页面 */
 .focus-mode .material-sidebar { display: none !important; }
-.focus-mode .ai-float-wrap { display: none !important; }
+.focus-mode .ai-sidebar { display: none !important; }
 .focus-mode.workspace-shell {
   position: fixed !important;
   inset: 0 !important;
@@ -1569,65 +1933,82 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
 }
 
-/* ── 悬浮 AI 助手 ─────────────────────────────────────────── */
-.ai-float-wrap { position: absolute; bottom: 1.5rem; right: 1.5rem; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
-.editor-area { position: relative; }
-.ai-float-btn { width: 52px; height: 52px; border-radius: 50%; border: none; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-size: 0.78rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,0.18); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; transition: transform 0.2s, box-shadow 0.2s; }
-.ai-float-btn:hover, .ai-float-btn.active { transform: scale(1.1); box-shadow: 0 6px 24px rgba(0,0,0,0.28); }
-.ai-float-btn span:first-child { font-size: 1rem; line-height: 1; }
-.ai-float-btn span:last-child { font-size: 0.62rem; letter-spacing: 1px; }
-.ai-float-panel { width: 320px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 40px rgba(0,0,0,0.18); overflow: hidden; }
-.ai-fp-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: linear-gradient(135deg, var(--primary), var(--primary-light)); }
-.ai-fp-title { color: #fff; font-weight: 700; font-size: 0.9rem; }
-.ai-fp-close { background: rgba(255,255,255,0.2); border: none; color: #fff; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
-.ai-fp-close:hover { background: rgba(255,255,255,0.35); }
-.ai-fp-tabs { display: flex; border-bottom: 1px solid var(--border); }
-.ai-fp-tabs button { flex: 1; padding: 0.45rem 0.2rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s; white-space: nowrap; }
-.ai-fp-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; background: var(--bg-hover); }
-.ai-fp-body { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; max-height: 380px; overflow-y: auto; }
-.ai-fp-form { display: flex; flex-direction: column; gap: 0.45rem; }
-.ai-fp-input { width: 100%; padding: 0.4rem 0.65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; box-sizing: border-box; font-family: inherit; }
-.ai-fp-input:focus { outline: none; border-color: var(--primary); }
-.ai-fp-textarea { width: 100%; height: 80px; padding: 0.4rem 0.65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.82rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
-.ai-fp-textarea:focus { outline: none; border-color: var(--primary); }
-.ai-fp-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; background: var(--bg-input); border-radius: 6px; }
-.continue-words-row { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.55rem; flex-wrap: wrap; }
-.ai-fp-sublabel { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
-.words-btn { padding: 0.18rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-sub); font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
-.words-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-.words-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
-.ai-fp-section { margin-bottom: 0.55rem; }
-.pin-badge { font-size: 0.62rem; padding: 0.08rem 0.35rem; background: var(--primary); color: #fff; border-radius: 3px; margin-left: 0.3rem; vertical-align: middle; }
-.pin-badge-off { font-size: 0.62rem; padding: 0.08rem 0.35rem; background: var(--bg-hover); color: var(--text-muted); border-radius: 3px; margin-left: 0.3rem; vertical-align: middle; }
-.ai-history-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
-.ai-history-count { font-size: 0.78rem; color: var(--text-muted); }
-.ai-history-item { background: var(--bg-input); border-radius: 8px; padding: 0.7rem; margin-bottom: 0.5rem; border: 1px solid var(--border); }
-.ai-history-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
-.ai-history-tab { font-size: 0.75rem; font-weight: 600; color: var(--primary); }
-.ai-history-time { font-size: 0.7rem; color: var(--text-muted); }
-.ai-history-preview { font-size: 0.78rem; color: var(--text-sub); line-height: 1.5; margin-bottom: 0.4rem; white-space: pre-wrap; }
-.ai-fp-paragraphs { display: flex; flex-direction: column; gap: 0.5rem; }
-.ai-fp-para { background: var(--bg-input); border-radius: 8px; padding: 0.7rem; border: 1px solid var(--border); }
-.ai-fp-para-text { font-size: 0.85rem; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin: 0 0 0.5rem; line-height: 1.8; font-family: inherit; }
-.ai-fp-insert-para { font-size: 0.75rem; padding: 0.25rem 0.7rem; background: var(--primary); color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-.ai-fp-insert-para:hover { opacity: 0.85; }
-.ai-fp-run { width: 100%; padding: 0.45rem; border: none; border-radius: 7px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
-.ai-fp-run:disabled { opacity: 0.5; cursor: not-allowed; }
-.ai-fp-run:hover:not(:disabled) { opacity: 0.88; }
-.ai-fp-ghost { width: 100%; padding: 0.35rem; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; transition: all 0.18s; }
-.ai-fp-ghost:hover { border-color: var(--primary); color: var(--primary); }
-.ai-fp-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.82rem; padding: 0.5rem 0; }
-.ai-fp-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.ai-fp-error { padding: 0.45rem 0.65rem; background: rgba(229,57,53,0.08); border: 1px solid rgba(229,57,53,0.25); border-radius: 7px; color: #e53935; font-size: 0.78rem; }
-.ai-fp-result { display: flex; flex-direction: column; gap: 0.4rem; }
-.ai-fp-result-bar { display: flex; align-items: center; justify-content: space-between; }
-.ai-fp-result-bar > span { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
-.ai-fp-result-bar div { display: flex; gap: 0.35rem; }
-.ai-fp-insert { padding: 0.2rem 0.55rem; border-radius: 5px; border: none; background: var(--primary); color: #fff; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
-.ai-fp-insert:hover { opacity: 0.85; }
-.ai-fp-clear { padding: 0.2rem 0.55rem; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; }
-.ai-fp-result-text { font-size: 0.78rem; color: var(--text-main); line-height: 1.7; white-space: pre-wrap; word-break: break-all; background: var(--bg-input); border: 1px solid var(--border); border-radius: 7px; padding: 0.6rem 0.75rem; margin: 0; max-height: 200px; overflow-y: auto; }
+/* ── 右侧 AI 上下文配置侧边栏 ─────────────────────────────── */
+.editor-area { position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* 侧边栏容器 */
+.ai-sidebar { flex-shrink: 0; width: 300px; background: var(--bg-sidebar); border-left: 1px solid var(--border); display: flex; flex-direction: row; position: relative; transition: width 0.22s cubic-bezier(0.4,0,0.2,1); overflow: hidden; }
+.ai-sidebar.collapsed { width: 32px; }
+
+/* 拖拽手柄 */
+.ai-resize-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; cursor: col-resize; background: transparent; z-index: 10; transition: background 0.15s; }
+.ai-resize-handle:hover { background: var(--primary); opacity: 0.5; }
+
+/* 收起书签栏 */
+.ai-sidebar-tab { width: 32px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 1.5rem; gap: 0.5rem; cursor: pointer; background: var(--bg-sidebar); transition: background 0.15s; user-select: none; }
+.ai-sidebar-tab:hover { background: var(--bg-hover); }
+.ai-sidebar-tab-icon { font-size: 0.9rem; color: var(--primary); }
+.ai-sidebar-tab-text { writing-mode: vertical-rl; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); letter-spacing: 2px; }
+
+/* 展开面板 */
+.ai-sidebar-inner { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding-left: 5px; }
+.ai-sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1rem 0.8rem 1.2rem; border-bottom: 1px solid var(--border); flex-shrink: 0; background: linear-gradient(135deg, var(--primary), var(--primary-light)); }
+.ai-sidebar-title { color: #fff; font-weight: 700; font-size: 0.88rem; }
+.ai-sidebar-collapse { background: rgba(255,255,255,0.2); border: none; color: #fff; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: background 0.2s; font-weight: 700; }
+.ai-sidebar-collapse:hover { background: rgba(255,255,255,0.35); }
+
+/* 配置区块 */
+.ai-cfg-section { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-cfg-section-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.55rem; font-size: 0.8rem; font-weight: 700; color: var(--text-main); }
+.ai-cfg-count { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; }
+.ai-cfg-badge { font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 10px; }
+.ai-cfg-badge.on  { background: rgba(16,185,129,0.15); color: #10b981; }
+.ai-cfg-badge.off { background: var(--bg-hover); color: var(--text-muted); }
+.ai-cfg-empty { font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; }
+.ai-cfg-chips { display: flex; flex-direction: column; gap: 0.35rem; }
+.ai-cfg-chip { display: flex; align-items: center; justify-content: space-between; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.78rem; }
+.ai-cfg-chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+.ai-cfg-chip-del { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.7rem; padding: 0 0.2rem; transition: color 0.15s; }
+.ai-cfg-chip-del:hover { color: #ef4444; }
+.ai-cfg-clear { margin-top: 0.25rem; background: transparent; border: none; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; padding: 0; text-decoration: underline; }
+.ai-cfg-clear:hover { color: #ef4444; }
+.ai-cfg-textarea { width: 100%; padding: 0.55rem 0.7rem; border: 1.5px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.8rem; line-height: 1.6; resize: vertical; box-sizing: border-box; transition: border-color 0.2s; font-family: inherit; }
+.ai-cfg-textarea:focus { outline: none; border-color: var(--primary); }
+.ai-cfg-row { display: flex; align-items: center; gap: 0.5rem; }
+.ai-cfg-label { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.ai-cfg-words { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.ai-cfg-word-btn { padding: 0.2rem 0.55rem; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--text-sub); font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
+.ai-cfg-word-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.ai-cfg-select { flex: 1; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-input); color: var(--text-main); font-size: 0.78rem; cursor: pointer; }
+.ai-cfg-select:focus { outline: none; border-color: var(--primary); }
+.ai-cfg-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.ai-cfg-quick-btn { padding: 0.45rem 0.4rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.3rem; transition: all 0.15s; font-weight: 500; }
+.ai-cfg-quick-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-hover); }
+.ai-cfg-quick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-cfg-tip { margin-top: 0.6rem; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+.ai-cfg-tip kbd { background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; padding: 0.05rem 0.3rem; font-size: 0.7rem; font-family: monospace; }
+
+/* 上下文摘要面板 */
+.ai-ctx-summary .ai-ctx-summary-body { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.4rem 0.2rem; }
+.ai-ctx-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--text-muted, #888); padding: 0.25rem 0.4rem; border-radius: 5px; background: var(--bg-input, #f5f5f5); transition: background 0.2s, color 0.2s; }
+.ai-ctx-row.active { color: var(--accent, #7c6af7); background: rgba(124,106,247,0.08); }
+.ai-ctx-icon { font-size: 0.85rem; flex-shrink: 0; }
+.ai-ctx-warn { font-size: 0.72rem; color: #e67e22; background: rgba(230,126,34,0.1); border-radius: 5px; padding: 0.2rem 0.4rem; line-height: 1.4; }
+
+/* AI 生成内容标记面板 */
+.ai-marker-panel { margin: 0.5rem 0.75rem; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.ai-marker-header { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.75rem; background: linear-gradient(90deg, rgba(99,102,241,0.12), transparent); border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; color: var(--primary); }
+.ai-marker-clear { background: transparent; border: none; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; padding: 0; }
+.ai-marker-clear:hover { color: #ef4444; }
+.ai-marker-list { display: flex; flex-direction: column; max-height: 160px; overflow-y: auto; }
+.ai-marker-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border); transition: background 0.15s; }
+.ai-marker-item:last-child { border-bottom: none; }
+.ai-marker-item:hover { background: var(--bg-hover); }
+.ai-marker-badge { flex-shrink: 0; font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 10px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; white-space: nowrap; }
+.ai-marker-preview { flex: 1; font-size: 0.75rem; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-marker-del { flex-shrink: 0; background: transparent; border: none; color: var(--text-muted); font-size: 0.65rem; cursor: pointer; padding: 0.1rem 0.25rem; border-radius: 3px; transition: color 0.15s; }
+.ai-marker-del:hover { color: #ef4444; }
+
 .ai-pop-enter-active { transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1); }
 .ai-pop-leave-active { transition: all 0.15s ease; }
 .ai-pop-enter-from { opacity: 0; transform: scale(0.85) translateY(10px); transform-origin: bottom right; }

@@ -85,35 +85,45 @@
 
     <!-- 新增/编辑素材弹窗 -->
     <div v-if="showCreateModal || showEditModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal">
-        <h2>{{ showEditModal ? '编辑素材' : '新增素材' }}</h2>
-        <form @submit.prevent="saveMaterial">
-          <div class="form-group">
-            <label>分类 *</label>
-            <select v-model="form.category" required>
-              <option value="">请选择分类</option>
-              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-            </select>
+      <div class="modal write-modal">
+        <div class="write-modal-header">
+          <div class="write-modal-title">
+            <span class="write-modal-icon">{{ showEditModal ? '✏️' : '＋' }}</span>
+            <h2>{{ showEditModal ? '编辑素材' : '新增素材' }}</h2>
           </div>
-          <div class="form-group">
-            <label>标题 *</label>
-            <input v-model="form.title" type="text" placeholder="请输入标题" required />
-          </div>
-          <div class="form-group">
-            <label>内容 *</label>
-            <textarea v-model="form.content" rows="10" placeholder="请输入素材内容" required></textarea>
-          </div>
-          <div class="form-group">
-            <label>标签（多个标签用逗号分隔）</label>
-            <input v-model="tagsInput" type="text" placeholder="例如：宫廷,礼仪,服饰" />
-          </div>
-          <div class="form-actions">
-            <button type="button" class="cancel-btn" @click="closeModal">取消</button>
-            <button type="submit" class="submit-btn" :disabled="saving">
-              {{ saving ? '保存中...' : '保存' }}
-            </button>
-          </div>
-        </form>
+          <button class="write-close-btn" @click="closeModal">✕</button>
+        </div>
+        <div class="write-modal-body">
+          <form @submit.prevent="saveMaterial">
+            <div class="write-form-row">
+              <div class="write-form-group write-form-sm">
+                <label>分类 <span class="write-req">*</span></label>
+                <select v-model="form.category" required class="write-select">
+                  <option value="">请选择分类</option>
+                  <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+                </select>
+              </div>
+              <div class="write-form-group write-form-grow">
+                <label>标题 <span class="write-req">*</span></label>
+                <input v-model="form.title" type="text" placeholder="请输入素材标题" required class="write-input" />
+              </div>
+            </div>
+            <div class="write-form-group">
+              <label>内容 <span class="write-req">*</span></label>
+              <textarea v-model="form.content" rows="18" placeholder="请在此输入素材正文，支持长文撰写，内容越详尽越好..." required class="write-input write-textarea"></textarea>
+            </div>
+            <div class="write-form-group">
+              <label>标签 <span class="write-hint">多个标签用英文逗号分隔（可选）</span></label>
+              <input v-model="tagsInput" type="text" placeholder="如：宫廷,礼仪,服饰" class="write-input" />
+            </div>
+            <div class="write-form-actions">
+              <button type="button" class="write-cancel-btn" @click="closeModal">取消</button>
+              <button type="submit" class="write-submit-btn" :disabled="saving">
+                {{ saving ? '保存中...' : (showEditModal ? '💾 保存修改' : '✅ 创建素材') }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -122,10 +132,16 @@
       <div class="modal">
         <h2>批量导入素材</h2>
         <div class="import-info">
-          <p>请上传Excel文件，格式如下：</p>
+          <p>请上传 Excel 文件，首行为表头，格式如下：</p>
           <div class="import-format">
-            <p>朝代 | 分类 | 标题 | 内容 | 来源链接 | 标签</p>
-            <p>汉 | 制度 | 汉代官制 | 汉代的官制体系... | http://... | 官制,政治</p>
+            <p><strong>分类 | 标题 | 内容 | 标签（可选）</strong></p>
+            <p>饮食文化 | 茶马互市 | 茶马互市是古代边贸制度... | 茶文化,边贸</p>
+            <p style="color: #aaa; font-size: 0.9rem; margin-top: 0.5rem;">
+              • 分类、标题、内容为必填项<br/>
+              • 标签可选，多个标签用英文逗号或中文逗号分隔<br/>
+              • 分类必须是系统已有分类<br/>
+              • 导入后默认为已发布状态
+            </p>
           </div>
         </div>
         <div class="form-group">
@@ -611,15 +627,13 @@ onMounted(() => {
 
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.7);
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
 }
 
 .modal {
@@ -637,6 +651,184 @@ onMounted(() => {
   font-size: 1.5rem;
   color: #e8e8e8;
 }
+
+/* ── 护眼写作弹窗 ── */
+.write-modal {
+  background: #f5f0e8;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 72px rgba(0,0,0,0.28);
+  padding: 0;
+}
+
+.write-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.15rem 1.75rem;
+  background: #ede6d8;
+  border-bottom: 1px solid #d8cfc0;
+  flex-shrink: 0;
+}
+
+.write-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.write-modal-icon { font-size: 1.2rem; }
+
+.write-modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2c2010;
+}
+
+.write-close-btn {
+  background: transparent;
+  border: none;
+  color: #8a7a65;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+
+.write-close-btn:hover {
+  color: #c0392b;
+  background: rgba(192,57,43,0.1);
+}
+
+.write-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 1.75rem;
+  background: #f5f0e8;
+}
+
+.write-form-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.write-form-group {
+  margin-bottom: 1.1rem;
+}
+
+.write-form-sm  { flex: 0 0 200px; min-width: 150px; }
+.write-form-grow { flex: 1; }
+
+.write-form-group label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #3a2e1e;
+}
+
+.write-req { color: #c0392b; margin-left: 2px; }
+
+.write-hint {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: #8a7a65;
+  margin-left: 0.4rem;
+}
+
+.write-select {
+  width: 100%;
+  padding: 0.62rem 0.9rem;
+  border: 1.5px solid #c8bdb0;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c2010;
+  font-size: 0.9rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.write-select:focus {
+  outline: none;
+  border-color: #7a5c14;
+  box-shadow: 0 0 0 3px rgba(122,92,20,0.13);
+}
+
+.write-input {
+  width: 100%;
+  padding: 0.62rem 0.9rem;
+  border: 1.5px solid #c8bdb0;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c2010;
+  font-size: 0.92rem;
+  font-family: 'Noto Serif SC', 'Noto Serif', 'STSong', Georgia, serif;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.write-input:focus {
+  outline: none;
+  border-color: #7a5c14;
+  box-shadow: 0 0 0 3px rgba(122,92,20,0.13);
+}
+
+.write-textarea {
+  resize: vertical;
+  min-height: 400px;
+  line-height: 1.9;
+  letter-spacing: 0.03em;
+}
+
+.write-form-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid #d8cfc0;
+  margin-top: 0.5rem;
+}
+
+.write-cancel-btn {
+  padding: 0.62rem 1.3rem;
+  border-radius: 8px;
+  border: 1.5px solid #c8bdb0;
+  background: #fff;
+  color: #5a4a35;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.write-cancel-btn:hover {
+  border-color: #7a5c14;
+  color: #7a5c14;
+  background: #fdf8ef;
+}
+
+.write-submit-btn {
+  padding: 0.62rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #7a5c14, #a87d20);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.write-submit-btn:hover { opacity: 0.88; }
+.write-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .form-group {
   margin-bottom: 1.5rem;
@@ -678,6 +870,7 @@ onMounted(() => {
 .import-info p {
   margin: 0.5rem 0;
   color: #e8e8e8;
+  font-size: 0.95rem;
 }
 
 .import-format {
@@ -685,6 +878,23 @@ onMounted(() => {
   padding: 1rem;
   border-radius: 6px;
   margin-top: 1rem;
+  border-left: 3px solid #e94560;
+}
+
+.import-format p {
+  margin: 0.4rem 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.import-format p:first-child {
+  font-weight: 600;
+  color: #e94560;
+}
+
+.import-format p:nth-child(2) {
+  color: #aaa;
+  font-size: 0.85rem;
 }
 
 .form-actions {

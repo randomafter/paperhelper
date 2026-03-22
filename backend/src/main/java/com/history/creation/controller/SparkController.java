@@ -4,6 +4,7 @@ import com.history.creation.common.Result;
 import com.history.creation.dto.MaterialDTO;
 import com.history.creation.service.MaterialService;
 import com.history.creation.service.SparkService;
+import com.history.creation.util.SparkApiUtil;
 import com.history.creation.util.SparkApiUtil.SparkApiException;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -12,13 +13,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * 讯飞星火大模型接口
- */
 @RestController
 @RequestMapping("/spark")
 @Validated
@@ -26,18 +26,15 @@ public class SparkController {
 
     private final SparkService sparkService;
     private final MaterialService materialService;
-    // 用于异步处理 SSE 流
+    private final SparkApiUtil sparkApiUtil;
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
-    public SparkController(SparkService sparkService, MaterialService materialService) {
+    public SparkController(SparkService sparkService, MaterialService materialService, SparkApiUtil sparkApiUtil) {
         this.sparkService = sparkService;
         this.materialService = materialService;
+        this.sparkApiUtil = sparkApiUtil;
     }
 
-    /**
-     * 通用文本生成（同步）
-     * POST /api/spark/generate
-     */
     @PostMapping("/generate")
     public Result<Map<String, String>> generate(@RequestBody GenerateRequest req) {
         try {
@@ -53,67 +50,51 @@ public class SparkController {
         }
     }
 
-    /**
-     * SSE 流式文本生成
-     * POST /api/spark/stream
-     * 返回 text/event-stream，每个事件携带一段文字
-     */
     @PostMapping(value = "/stream", produces = "text/event-stream")
     public SseEmitter stream(@RequestBody GenerateRequest req) {
-        // timeout 设置为 3 分钟（足够长的生成时间）
         SseEmitter emitter = new SseEmitter(180_000L);
         sseExecutor.execute(() -> {
             try {
                 String finalPrompt = buildPromptWithMaterials(req.getPrompt(), req.getMaterialId(), req.getMaterialIds());
-                String systemPrompt = req.getSystemPrompt();
-
                 sparkService.generateStream(
-                    systemPrompt,
-                    finalPrompt,
-                    chunk -> {
-                        try {
-                            // 每个 chunk 作为一个 SSE data 事件发送
-                            emitter.send(SseEmitter.event()
-                                .name("chunk")
-                                .data(chunk));
-                        } catch (IOException e) {
-                            emitter.completeWithError(e);
-                        }
-                    },
-                    () -> {
-                        try {
-                            // 发送结束标记
-                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                            emitter.complete();
-                        } catch (IOException e) {
-                            emitter.completeWithError(e);
-                        }
-                    },
-                    errMsg -> {
-                        try {
-                            emitter.send(SseEmitter.event().name("error").data(errMsg));
-                            emitter.complete();
-                        } catch (IOException ex) {
-                            emitter.completeWithError(ex);
-                        }
-                    }
+                    req.getSystemPrompt(), finalPrompt,
+                    chunk -> sendChunk(emitter, chunk),
+                    () -> sendDone(emitter),
+                    err -> sendError(emitter, err)
                 );
             } catch (Exception e) {
-                try {
-                    emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
-                    emitter.complete();
-                } catch (IOException ex) {
-                    emitter.completeWithError(ex);
-                }
+                sendError(emitter, e.getMessage());
             }
         });
         return emitter;
     }
 
     /**
-     * 生成历史素材内容建议
-     * POST /api/spark/suggest-material
+     * 多轮对话流式接口（对话面板专用）
+     * POST /api/spark/stream/chat
      */
+    @PostMapping(value = "/stream/chat", produces = "text/event-stream")
+    public SseEmitter streamChat(@RequestBody ChatRequest req) {
+        SseEmitter emitter = new SseEmitter(180_000L);
+        sseExecutor.execute(() -> {
+            try {
+                String systemPrompt = buildSystemPromptForChat(
+                        req.getSystemPrompt(), req.getMaterialIds());
+                List<Map<String, String>> history = req.getMessages() != null
+                        ? req.getMessages() : new ArrayList<>();
+                sparkApiUtil.chatStreamWithHistory(
+                    systemPrompt, history,
+                    chunk -> sendChunk(emitter, chunk),
+                    () -> sendDone(emitter),
+                    err -> sendError(emitter, err)
+                );
+            } catch (Exception e) {
+                sendError(emitter, e.getMessage());
+            }
+        });
+        return emitter;
+    }
+
     @PostMapping("/suggest-material")
     public Result<Map<String, String>> suggestMaterial(@RequestBody SuggestRequest req) {
         try {
@@ -126,10 +107,6 @@ public class SparkController {
         }
     }
 
-    /**
-     * 文章润色
-     * POST /api/spark/polish
-     */
     @PostMapping("/polish")
     public Result<Map<String, String>> polish(@RequestBody PolishRequest req) {
         try {
@@ -142,30 +119,24 @@ public class SparkController {
         }
     }
 
-    // ── 私有辅助方法 ──────────────────────────────────────────────
+    // ── 私有辅助 ──────────────────────────────────────────────────
 
-    private String buildPromptWithMaterials(String prompt, Long materialId, java.util.List<Long> materialIds) {
+    private String buildPromptWithMaterials(String prompt, Long materialId, List<Long> materialIds) {
         StringBuilder sb = new StringBuilder();
-        // 单素材（向后兼容）
         if (materialId != null) {
             try {
                 MaterialDTO mat = materialService.getMaterialById(materialId, null);
-                if (mat != null) {
-                    sb.append("【参考素材】\n标题：").append(mat.getTitle())
-                      .append("\n内容：").append(mat.getContent()).append("\n\n");
-                }
+                if (mat != null) sb.append("【参考素材】\n标题：").append(mat.getTitle())
+                        .append("\n内容：").append(mat.getContent()).append("\n\n");
             } catch (Exception ignored) {}
         }
-        // 多素材
         if (materialIds != null && !materialIds.isEmpty()) {
             int idx = 1;
             for (Long id : materialIds) {
                 try {
                     MaterialDTO mat = materialService.getMaterialById(id, null);
-                    if (mat != null) {
-                        sb.append("【参考素材").append(idx++).append("】\n标题：").append(mat.getTitle())
-                          .append("\n内容：").append(mat.getContent()).append("\n\n");
-                    }
+                    if (mat != null) sb.append("【参考素材").append(idx++).append("】\n标题：")
+                            .append(mat.getTitle()).append("\n内容：").append(mat.getContent()).append("\n\n");
                 } catch (Exception ignored) {}
             }
         }
@@ -173,7 +144,44 @@ public class SparkController {
         return sb.toString();
     }
 
-    // ── 请求体 DTO ────────────────────────────────────────────────
+    private String buildSystemPromptForChat(String userContext, List<Long> materialIds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("你是一位专业的历史题材创作助手，帮助作者进行历史小说创作。\n");
+        sb.append("职责包括：续写、润色、改写、生成场景/对话/大纲、历史考证等。\n");
+        sb.append("回答时优先参考以下上下文资料，引用素材时标注 [素材引用: 标题]。\n\n");
+        if (materialIds != null && !materialIds.isEmpty()) {
+            int idx = 1;
+            for (Long id : materialIds) {
+                try {
+                    MaterialDTO mat = materialService.getMaterialById(id, null);
+                    if (mat != null) sb.append("【参考素材").append(idx++).append("】\n")
+                            .append("标题：").append(mat.getTitle()).append("\n")
+                            .append("内容：").append(mat.getContent()).append("\n\n");
+                } catch (Exception ignored) {}
+            }
+        }
+        if (userContext != null && !userContext.isBlank()) {
+            sb.append(userContext).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private void sendChunk(SseEmitter emitter, String chunk) {
+        try { emitter.send(SseEmitter.event().name("chunk").data(chunk)); }
+        catch (IOException e) { emitter.completeWithError(e); }
+    }
+
+    private void sendDone(SseEmitter emitter) {
+        try { emitter.send(SseEmitter.event().name("done").data("[DONE]")); emitter.complete(); }
+        catch (IOException e) { emitter.completeWithError(e); }
+    }
+
+    private void sendError(SseEmitter emitter, String msg) {
+        try { emitter.send(SseEmitter.event().name("error").data(msg != null ? msg : "未知错误")); emitter.complete(); }
+        catch (IOException ex) { emitter.completeWithError(ex); }
+    }
+
+    // ── DTO ───────────────────────────────────────────────────────
 
     public static class GenerateRequest {
         @NotBlank(message = "prompt不能为空")
@@ -181,15 +189,27 @@ public class SparkController {
         private String prompt;
         private String systemPrompt;
         private Long materialId;
-        private java.util.List<Long> materialIds;
+        private List<Long> materialIds;
         public String getPrompt() { return prompt; }
-        public void setPrompt(String prompt) { this.prompt = prompt; }
+        public void setPrompt(String p) { this.prompt = p; }
         public String getSystemPrompt() { return systemPrompt; }
-        public void setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; }
+        public void setSystemPrompt(String s) { this.systemPrompt = s; }
         public Long getMaterialId() { return materialId; }
-        public void setMaterialId(Long materialId) { this.materialId = materialId; }
-        public java.util.List<Long> getMaterialIds() { return materialIds; }
-        public void setMaterialIds(java.util.List<Long> materialIds) { this.materialIds = materialIds; }
+        public void setMaterialId(Long id) { this.materialId = id; }
+        public List<Long> getMaterialIds() { return materialIds; }
+        public void setMaterialIds(List<Long> ids) { this.materialIds = ids; }
+    }
+
+    public static class ChatRequest {
+        private String systemPrompt;
+        private List<Map<String, String>> messages;
+        private List<Long> materialIds;
+        public String getSystemPrompt() { return systemPrompt; }
+        public void setSystemPrompt(String s) { this.systemPrompt = s; }
+        public List<Map<String, String>> getMessages() { return messages; }
+        public void setMessages(List<Map<String, String>> m) { this.messages = m; }
+        public List<Long> getMaterialIds() { return materialIds; }
+        public void setMaterialIds(List<Long> ids) { this.materialIds = ids; }
     }
 
     public static class SuggestRequest {
@@ -198,9 +218,9 @@ public class SparkController {
         @NotBlank(message = "分类不能为空")
         private String category;
         public String getTitle() { return title; }
-        public void setTitle(String title) { this.title = title; }
+        public void setTitle(String t) { this.title = t; }
         public String getCategory() { return category; }
-        public void setCategory(String category) { this.category = category; }
+        public void setCategory(String c) { this.category = c; }
     }
 
     public static class PolishRequest {
@@ -208,6 +228,6 @@ public class SparkController {
         @Size(max = 5000, message = "文本不能超过5000字")
         private String text;
         public String getText() { return text; }
-        public void setText(String text) { this.text = text; }
+        public void setText(String t) { this.text = t; }
     }
 }

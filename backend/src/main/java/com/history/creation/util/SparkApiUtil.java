@@ -14,19 +14,16 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
-/**
- * 讯飞星火大模型 HTTP API 工具类
- * 使用 APIPassword 作为 Bearer Token
- * 接口文档: https://www.xfyun.cn/doc/spark/HTTP调用文档.html
- */
 @Component
 public class SparkApiUtil {
 
     private static final Logger log = LoggerFactory.getLogger(SparkApiUtil.class);
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
-
 
     private final SparkProperties props;
     private final OkHttpClient httpClient;
@@ -42,53 +39,31 @@ public class SparkApiUtil {
                 .build();
     }
 
-    /**
-     * 发送对话请求（非流式）
-     *
-     * @param systemPrompt 系统提示词（可为 null）
-     * @param userMessage  用户输入
-     * @return 模型回复文本
-     * @throws SparkApiException API 调用异常
-     */
     public String chat(String systemPrompt, String userMessage) throws SparkApiException {
         String requestBody = buildRequestBody(systemPrompt, userMessage, false);
-        log.debug("[Spark] 请求URL: {}", props.getApiUrl());
-        log.debug("[Spark] 请求体: {}", requestBody);
-
         Request request = new Request.Builder()
                 .url(props.getApiUrl())
                 .addHeader("Authorization", "Bearer " + props.getApiKey())
                 .addHeader("Content-Type", "application/json")
                 .post(RequestBody.create(requestBody, JSON_TYPE))
                 .build();
-
         try (Response response = httpClient.newCall(request).execute()) {
             String respBody = response.body() != null ? response.body().string() : "";
-            if (!response.isSuccessful()) {
-                log.error("[Spark] HTTP 错误 {}: {}", response.code(), respBody);
-                throw new SparkApiException(response.code(), "API请求失败: " + parseErrorMessage(respBody));
-            }
-            log.debug("[Spark] 响应: {}", respBody);
+            if (!response.isSuccessful()) throw new SparkApiException(response.code(), "API请求失败: " + parseErrorMessage(respBody));
             return parseResponse(respBody);
         } catch (IOException e) {
-            log.error("[Spark] 网络异常: {}", e.getMessage());
             throw new SparkApiException(503, "网络连接超时或异常: " + e.getMessage());
         }
     }
 
-    /**
-     * 流式请求，拼接完整结果返回
-     */
     public String chatStream(String systemPrompt, String userMessage) throws SparkApiException {
         String requestBody = buildRequestBody(systemPrompt, userMessage, true);
-
         Request request = new Request.Builder()
                 .url(props.getApiUrl())
                 .addHeader("Authorization", "Bearer " + props.getApiKey())
                 .addHeader("Content-Type", "application/json")
                 .post(RequestBody.create(requestBody, JSON_TYPE))
                 .build();
-
         StringBuilder sb = new StringBuilder();
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
@@ -96,8 +71,7 @@ public class SparkApiUtil {
                 throw new SparkApiException(response.code(), "API请求失败: " + parseErrorMessage(errBody));
             }
             if (response.body() == null) throw new SparkApiException(500, "响应体为空");
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (line.startsWith("data: ")) {
@@ -114,62 +88,21 @@ public class SparkApiUtil {
         return sb.toString();
     }
 
-    /**
-     * 流式请求，逐块回调（用于 SSE 推送）
-     *
-     * @param systemPrompt 系统提示词
-     * @param userMessage  用户输入
-     * @param onChunk      每收到一块内容时的回调，参数为文本片段
-     * @param onDone       流结束时的回调
-     * @param onError      发生错误时的回调
-     */
+    /** 单轮流式回调（旧接口保持兼容） */
     public void chatStreamCallback(String systemPrompt, String userMessage,
-                                   java.util.function.Consumer<String> onChunk,
-                                   Runnable onDone,
-                                   java.util.function.Consumer<String> onError) {
+                                   Consumer<String> onChunk, Runnable onDone, Consumer<String> onError) {
         String requestBody = buildRequestBody(systemPrompt, userMessage, true);
-        Request request = new Request.Builder()
-                .url(props.getApiUrl())
-                .addHeader("Authorization", "Bearer " + props.getApiKey())
-                .addHeader("Content-Type", "application/json")
-                .post(RequestBody.create(requestBody, JSON_TYPE))
-                .build();
+        doStreamRequest(requestBody, "[Spark Stream]", onChunk, onDone, onError);
+    }
 
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                log.error("[Spark Stream] 网络异常: {}", e.getMessage());
-                onError.accept("网络连接异常: " + e.getMessage());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    String errBody = response.body() != null ? response.body().string() : "";
-                    onError.accept("API请求失败: " + parseErrorMessage(errBody));
-                    return;
-                }
-                if (response.body() == null) { onError.accept("响应体为空"); return; }
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (line.startsWith("data: ")) {
-                            String data = line.substring(6).trim();
-                            if ("[DONE]".equals(data)) break;
-                            String chunk = parseStreamChunk(data);
-                            if (chunk != null && !chunk.isEmpty()) {
-                                onChunk.accept(chunk);
-                            }
-                        }
-                    }
-                    onDone.run();
-                } catch (IOException e) {
-                    log.error("[Spark Stream] 读取流异常: {}", e.getMessage());
-                    onError.accept("读取响应流异常: " + e.getMessage());
-                }
-            }
-        });
+    /** 多轮对话流式回调（对话面板专用） */
+    public void chatStreamWithHistory(String systemPrompt,
+                                      List<Map<String, String>> history,
+                                      Consumer<String> onChunk,
+                                      Runnable onDone,
+                                      Consumer<String> onError) {
+        String requestBody = buildRequestBodyWithHistory(systemPrompt, history, true);
+        doStreamRequest(requestBody, "[Spark Chat]", onChunk, onDone, onError);
     }
 
     // ── 私有方法 ──────────────────────────────────────────────────
@@ -180,7 +113,6 @@ public class SparkApiUtil {
             root.put("model", props.getModel());
             root.put("stream", stream);
             root.put("max_tokens", props.getMaxTokens());
-
             ArrayNode messages = objectMapper.createArrayNode();
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 ObjectNode sys = objectMapper.createObjectNode();
@@ -199,17 +131,86 @@ public class SparkApiUtil {
         }
     }
 
+    private String buildRequestBodyWithHistory(String systemPrompt,
+                                               List<Map<String, String>> history,
+                                               boolean stream) {
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("model", props.getModel());
+            root.put("stream", stream);
+            root.put("max_tokens", props.getMaxTokens());
+            ArrayNode messages = objectMapper.createArrayNode();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                ObjectNode sys = objectMapper.createObjectNode();
+                sys.put("role", "system");
+                sys.put("content", systemPrompt);
+                messages.add(sys);
+            }
+            // 最多保留最近 20 条，避免超出 token 限制
+            int start = Math.max(0, history.size() - 20);
+            for (int i = start; i < history.size(); i++) {
+                Map<String, String> msg = history.get(i);
+                ObjectNode node = objectMapper.createObjectNode();
+                node.put("role", msg.getOrDefault("role", "user"));
+                node.put("content", msg.getOrDefault("content", ""));
+                messages.add(node);
+            }
+            root.set("messages", messages);
+            return objectMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            throw new RuntimeException("构建多轮请求体失败", e);
+        }
+    }
+
+    private void doStreamRequest(String requestBody, String logTag,
+                                 Consumer<String> onChunk, Runnable onDone, Consumer<String> onError) {
+        Request request = new Request.Builder()
+                .url(props.getApiUrl())
+                .addHeader("Authorization", "Bearer " + props.getApiKey())
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(requestBody, JSON_TYPE))
+                .build();
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                log.error("{} 网络异常: {}", logTag, e.getMessage());
+                onError.accept("网络连接异常: " + e.getMessage());
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    String errBody = response.body() != null ? response.body().string() : "";
+                    onError.accept("API请求失败: " + parseErrorMessage(errBody));
+                    return;
+                }
+                if (response.body() == null) { onError.accept("响应体为空"); return; }
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("data: ")) {
+                            String data = line.substring(6).trim();
+                            if ("[DONE]".equals(data)) break;
+                            String chunk = parseStreamChunk(data);
+                            if (chunk != null && !chunk.isEmpty()) onChunk.accept(chunk);
+                        }
+                    }
+                    onDone.run();
+                } catch (IOException e) {
+                    log.error("{} 读取流异常: {}", logTag, e.getMessage());
+                    onError.accept("读取响应流异常: " + e.getMessage());
+                }
+            }
+        });
+    }
+
     private String parseResponse(String json) throws SparkApiException {
         try {
             JsonNode root = objectMapper.readTree(json);
-            if (root.has("code") && root.get("code").asInt() != 0) {
-                throw new SparkApiException(root.get("code").asInt(),
-                        root.path("message").asText("未知错误"));
-            }
+            if (root.has("code") && root.get("code").asInt() != 0)
+                throw new SparkApiException(root.get("code").asInt(), root.path("message").asText("未知错误"));
             JsonNode content = root.path("choices").path(0).path("message").path("content");
-            if (content.isMissingNode()) {
-                throw new SparkApiException(500, "响应格式异常: " + json);
-            }
+            if (content.isMissingNode()) throw new SparkApiException(500, "响应格式异常: " + json);
             return content.asText();
         } catch (SparkApiException e) {
             throw e;
