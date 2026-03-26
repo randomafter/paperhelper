@@ -36,11 +36,12 @@
 
     <div v-else-if="viewMode === 'table'" class="works-table-wrap">
       <table class="works-table">
-        <thead><tr><th>标题</th><th style="width:100px">分组</th><th style="width:160px">创建时间</th><th style="width:160px">最后修改</th><th style="width:190px">操作</th></tr></thead>
+        <thead><tr><th>标题</th><th style="width:100px">分组</th><th style="width:90px">字数</th><th style="width:160px">创建时间</th><th style="width:160px">最后修改</th><th style="width:190px">操作</th></tr></thead>
         <tbody>
           <tr v-for="work in filteredWorks" :key="work.id" class="work-row" :class="{ pinned: work.lastOpenedAt }">
             <td class="title-cell"><span v-if="work.lastOpenedAt" class="pin-badge">📌</span><span class="work-title">{{ work.title || '未命名' }}</span></td>
             <td class="group-cell"><span class="work-group-tag" :class="{ ungrouped: !work.groupName }">{{ work.groupName || '未分组' }}</span></td>
+            <td class="date-cell">{{ countWords(work.content) }}</td>
             <td class="date-cell">{{ formatDate(work.createdAt) }}</td>
             <td class="date-cell">{{ formatDate(work.updatedAt) }}</td>
             <td class="action-cell">
@@ -60,6 +61,7 @@
         <div class="card-preview">{{ work.content ? work.content.slice(0,80) + (work.content.length > 80 ? '...' : '') : '暂无内容' }}</div>
         <div class="card-footer">
           <span class="work-group-tag" :class="{ ungrouped: !work.groupName }">{{ work.groupName || '未分组' }}</span>
+          <span class="card-words">{{ countWords(work.content) }}</span>
           <div class="card-actions" @click.stop>
             <button @click="openWork(work.id)" class="btn-card open">打开</button>
             <button @click.stop="openMoveGroup(work)" class="btn-card move">移组</button>
@@ -193,6 +195,10 @@ function formatDate(d) {
   if (diff < 86400000) return Math.floor(diff/3600000) + ' 小时前'
   if (diff < 604800000) return Math.floor(diff/86400000) + ' 天前'
   return date.toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+}
+
+function countWords(text) {
+  return `${(text || '').replace(/\s/g, '').length}字`
 }
 
 async function loadWorks() {
@@ -393,6 +399,7 @@ onMounted(loadWorks)
 .work-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .group-cell { white-space: nowrap; }
 .work-group-tag { display: inline-block; padding: 0.12rem 0.5rem; background: var(--bg-hover); color: var(--text-sub); border-radius: 20px; font-size: 0.75rem; border: 1px solid var(--border); }
+.card-words { font-size: 0.75rem; color: var(--text-muted); margin-left: 0.45rem; }
 .work-group-tag.ungrouped { color: var(--text-muted); border-style: dashed; }
 .date-cell { font-size: 0.82rem; color: var(--text-sub); white-space: nowrap; }
 .action-cell { white-space: nowrap; }

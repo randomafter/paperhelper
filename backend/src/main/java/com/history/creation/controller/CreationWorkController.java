@@ -56,8 +56,13 @@ public class CreationWorkController {
         String pinnedOutline = body.get("pinnedOutline");
         String charProfiles = body.get("charProfiles");
         String outlineData = body.get("outlineData");
+        String charProfilesJson = body.get("charProfilesJson");
+        String worldSetting = body.get("worldSetting");
+        String plotHooks = body.get("plotHooks");
         try {
-            return Result.ok(workService.save(userId, id, title, content, pinnedOutline, charProfiles, outlineData));
+            return Result.ok(workService.save(userId, id, title, content,
+                    pinnedOutline, charProfiles, outlineData,
+                    charProfilesJson, worldSetting, plotHooks));
         } catch (RuntimeException e) {
             return Result.fail(400, e.getMessage());
         }

@@ -36,6 +36,15 @@ export const workGroupsApi = {
   },
 }
 
+export const seriesApi = {
+  get(groupName) {
+    return request.get('/series', { params: { groupName } })
+  },
+  save(data) {
+    return request.put('/series', data)
+  },
+}
+
 export const favoriteGroupsApi = {
   list() {
     return request.get('/favorite-groups')

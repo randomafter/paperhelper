@@ -146,29 +146,37 @@ public class SparkController {
 
     private String buildSystemPromptForChat(String userContext, List<Long> materialIds) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一位专业的历史题材创作助手，帮助作者进行历史小说创作。\n");
-        sb.append("职责包括：续写、润色、改写、生成场景/对话/大纲、历史考证等。\n");
-        sb.append("回答时优先参考以下上下文资料，引用素材时标注 [素材引用: 标题]。\n\n");
+        sb.append("你是一位历史题材创作助手。回答时必须优先使用用户绑定上下文：素材、大纲、人物设定、编辑区内容。\n");
+        sb.append("若绑定上下文与常识冲突，以绑定上下文为准；仅在信息不足时做最小必要补全。\n");
+        sb.append("最终回复只输出可直接使用的正文内容，不要解释、不要前言、不要题外话。\n\n");
         if (materialIds != null && !materialIds.isEmpty()) {
             int idx = 1;
             for (Long id : materialIds) {
                 try {
                     MaterialDTO mat = materialService.getMaterialById(id, null);
-                    if (mat != null) sb.append("【参考素材").append(idx++).append("】\n")
+                    if (mat != null) sb.append("【参考素材").append(idx++).append("（最高优先级）】\n")
                             .append("标题：").append(mat.getTitle()).append("\n")
                             .append("内容：").append(mat.getContent()).append("\n\n");
                 } catch (Exception ignored) {}
             }
         }
         if (userContext != null && !userContext.isBlank()) {
-            sb.append(userContext).append("\n");
+            sb.append("【用户绑定上下文（最高优先级）】\n").append(userContext).append("\n");
         }
         return sb.toString();
     }
 
     private void sendChunk(SseEmitter emitter, String chunk) {
-        try { emitter.send(SseEmitter.event().name("chunk").data(chunk)); }
-        catch (IOException e) { emitter.completeWithError(e); }
+        if (chunk == null || chunk.isEmpty()) return;
+        try {
+            // 为了获得稳定的“打字机”效果：即使上游一次返回大段，也按字符拆分推送
+            for (int i = 0; i < chunk.length(); i++) {
+                String ch = String.valueOf(chunk.charAt(i));
+                emitter.send(SseEmitter.event().name("chunk").data(ch));
+            }
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+        }
     }
 
     private void sendDone(SseEmitter emitter) {
@@ -231,3 +239,6 @@ public class SparkController {
         public void setText(String t) { this.text = t; }
     }
 }
+
+
+

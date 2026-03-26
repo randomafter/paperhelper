@@ -2,14 +2,20 @@
   <div class="workspace-shell" :class="{ 'focus-mode': focusMode }">
     <aside class="material-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
-        <span v-if="!sidebarCollapsed" class="sidebar-title">{{ sidePanel === 'material' ? '素材库' : '章节大纲' }}</span>
-        <button class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '>' : '<' }}</button>
+        <span v-if="!sidebarCollapsed" class="sidebar-title">
+          {{ sidePanel === 'material' ? '素材库' : sidePanel === 'outline' ? '章节大纲' : sidePanel === 'chars' ? '人物卡' : sidePanel === 'world' ? '世界观' : '伏笔清单' }}
+          <span v-if="workGroupName && sidePanel !== 'material'" class="series-badge" :title="'系列：' + workGroupName">📚 {{ workGroupName }}</span>
+        </span>
+        <button class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '>' : '&lt;' }}</button>
       </div>
       <template v-if="!sidebarCollapsed">
-        <!-- 主 Tab：素材库 / 大纲 -->
+        <!-- 主 Tab：素材库 / 大纲 / 人物卡 / 世界观 / 伏笔 -->
         <div class="side-panel-tabs">
-          <button :class="{ active: sidePanel === 'material' }" @click="sidePanel = 'material'">📚 素材库</button>
-          <button :class="{ active: sidePanel === 'outline' }" @click="sidePanel = 'outline'">📋 大纲</button>
+          <button :class="{ active: sidePanel === 'material' }" @click="sidePanel = 'material'">素材</button>
+          <button :class="{ active: sidePanel === 'outline' }" @click="sidePanel = 'outline'">大纲</button>
+          <button :class="{ active: sidePanel === 'chars' }" @click="sidePanel = 'chars'">人物</button>
+          <button :class="{ active: sidePanel === 'world' }" @click="sidePanel = 'world'">世界</button>
+          <button :class="{ active: sidePanel === 'hooks' }" @click="sidePanel = 'hooks'">伏笔</button>
         </div>
 
         <!-- 素材库面板 -->
@@ -19,12 +25,12 @@
           <button :class="{ active: matSource === 'favorite' }" @click="matSource = 'favorite'; loadFavMats()">收藏</button>
         </div>
         <div v-if="matSource === 'search'" class="search-area">
-          <select v-model="matCategory" class="mat-select">
+          <select v-model="matCategory" class="mat-select" @change="applyMatSearch">
             <option value="">全部分类</option>
             <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
           </select>
-          <input v-model="matKeyword" placeholder="搜索素材..." class="mat-search" @keyup.enter="searchMats" />
-          <button @click="searchMats" class="btn-search-sm">搜索</button>
+          <input v-model="matKeyword" placeholder="搜索素材..." class="mat-search" @keyup.enter="applyMatSearch" />
+          <button @click="applyMatSearch" class="btn-search-sm">搜索</button>
         </div>
         <div v-if="matSource === 'favorite'" class="search-area">
           <input v-model="favSearch" placeholder="在收藏中搜索..." class="mat-search" />
@@ -87,6 +93,7 @@
                     {{ { todo: '未写', writing: '写作中', done: '已完成' }[s] }}
                   </button>
                   <button @click="insertChapterMark(ch)" class="outline-act-btn ins" title="在编辑器中插入章节标题">↓写</button>
+                  <button @click="bindChapterToAI(ch)" class="outline-act-btn" :class="{ active: pinnedOutline.includes(ch.title) }" title="绑定到 AI 大纲上下文">✦ AI</button>
                 </div>
               </template>
               <!-- 编辑模式 -->
@@ -106,6 +113,106 @@
             共 {{ outlineChapters.length }} 章 · 已完成 {{ outlineChapters.filter(c=>c.status==='done').length }} 章
           </div>
         </template>
+
+        <!-- 人物卡面板 -->
+        <template v-if="sidePanel === 'chars'">
+          <div class="outline-toolbar">
+            <button @click="addCharCard" class="outline-btn-add">＋ 新增人物</button>
+            <button @click="bindAllCharsToAI" class="outline-btn-lock" title="将所有人物卡绑定到 AI">✦ 全绑 AI</button>
+          </div>
+          <div v-if="charCards.length === 0" class="outline-empty">
+            <p>暂无人物卡</p>
+            <p>点击「＋ 新增人物」创建第一张</p>
+          </div>
+          <div class="outline-list">
+            <div v-for="ch in charCards" :key="ch.id" class="outline-card char-card">
+              <div class="outline-card-header">
+                <span class="char-card-name">{{ ch.name || '未命名' }}</span>
+                <span class="char-card-identity">{{ ch.identity }}</span>
+                <div class="outline-card-actions">
+                  <button @click="editCharCard(ch)" class="outline-act-btn" title="编辑">✏️</button>
+                  <button @click="deleteCharCard(ch.id)" class="outline-act-btn del" title="删除">✕</button>
+                </div>
+              </div>
+              <div v-if="ch.personality" class="outline-summary">性格：{{ ch.personality }}</div>
+              <div class="outline-status-row">
+                <button @click="bindCharCardToAI(ch)" class="outline-act-btn" :class="{ active: charProfiles.includes(ch.name) }" title="绑定到 AI 人物设定">✦ AI</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 世界观面板 -->
+        <template v-if="sidePanel === 'world'">
+          <div class="outline-toolbar">
+            <button @click="bindWorldToAI" class="outline-btn-lock" title="将世界观绑定到 AI 上下文">✦ 绑定 AI</button>
+            <button @click="clearWorldBinding" class="outline-btn-import" title="清除 AI 世界观绑定">✕ 解绑</button>
+          </div>
+          <div class="world-panel">
+            <div v-for="mod in worldModules" :key="mod.key" class="world-module">
+              <div class="world-module-hd" @click="toggleWorldModule(mod)">
+                <span class="world-module-icon">{{ mod.icon }}</span>
+                <span class="world-module-title">{{ mod.label }}</span>
+                <span class="world-module-arrow">{{ mod.open ? '▾' : '▸' }}</span>
+              </div>
+              <transition name="world-expand">
+                <div v-if="mod.open" class="world-module-body">
+                  <textarea
+                    v-model="worldSetting[mod.key]"
+                    class="world-textarea"
+                    :rows="5"
+                    :placeholder="mod.placeholder"
+                    @input="onWorldInput"
+                  ></textarea>
+                </div>
+              </transition>
+            </div>
+          </div>
+          <div class="world-footer">
+            <span v-if="worldBound" class="world-bound-hint">✦ 已绑定到 AI</span>
+            <span v-else class="world-unbound-hint">未绑定 AI</span>
+          </div>
+        </template>
+
+        <!-- 伏笔面板 -->
+        <template v-if="sidePanel === 'hooks'">
+          <div class="outline-toolbar">
+            <button @click="addHook" class="outline-btn-add">＋ 新增伏笔</button>
+            <button @click="bindHooksToAI" class="outline-btn-lock" title="将未回收伏笔绑定到 AI">✦ 绑定 AI</button>
+          </div>
+          <div class="hooks-filter-row">
+            <button class="status-btn" :class="{ active: hookFilter === 'all' }" @click="hookFilter = 'all'">全部</button>
+            <button class="status-btn" :class="{ active: hookFilter === 'open' }" @click="hookFilter = 'open'">未回收</button>
+            <button class="status-btn" :class="{ active: hookFilter === 'resolved' }" @click="hookFilter = 'resolved'">已回收</button>
+          </div>
+          <div v-if="filteredHooks.length === 0" class="outline-empty">
+            <p>暂无伏笔</p>
+            <p>点击「＋ 新增伏笔」创建第一条</p>
+          </div>
+          <div class="outline-list">
+            <div v-for="h in filteredHooks" :key="h.id" class="outline-card hook-card">
+              <div class="outline-card-header">
+                <span class="hook-title">{{ h.title || '未命名伏笔' }}</span>
+                <span class="hook-from">来源：{{ h.sourceChapter || '未标记章节' }}</span>
+                <div class="outline-card-actions">
+                  <button @click="insertHookToEditor(h)" class="outline-act-btn ins" title="插入到编辑器">↓写</button>
+                  <button @click="toggleHookResolved(h.id)" class="outline-act-btn" :title="h.resolved ? '标记为未回收' : '标记为已回收'">
+                    {{ h.resolved ? '↺' : '✓' }}
+                  </button>
+                  <button @click="deleteHook(h.id)" class="outline-act-btn del" title="删除">✕</button>
+                </div>
+              </div>
+              <div v-if="h.note" class="outline-summary">{{ h.note }}</div>
+              <div class="outline-status-row">
+                <span class="hook-status" :class="h.resolved ? 'resolved' : 'open'">
+                  {{ h.resolved ? '已回收' : '未回收' }}
+                </span>
+                <span v-if="h.resolvedChapter" class="hook-resolve-ch">回收章节：{{ h.resolvedChapter }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
       </template>
     </aside>
 
@@ -114,11 +221,11 @@
         <button @click="goWorks" class="btn-back">‹ 我的作品</button>
         <input v-model="docTitle" class="doc-title-input" placeholder="文章标题...">
         <div class="toolbar-actions">
-          <span class="word-count">{{ wordCount }} 字</span>
           <span v-if="saveStatus" class="save-status" :class="saveStatus">{{ saveStatusText }}</span>
           <button @click="saveWork" :disabled="saving" class="btn-save">{{ saving ? '保存中...' : '保存' }}</button>
           <button @click="clearEditor" class="btn-tool">清空</button>
           <button @click="copyAll" class="btn-tool">复制</button>
+          <button @click="showRichToolbar = !showRichToolbar" class="btn-tool" :class="{ active: showRichToolbar }">排版工具</button>
           <button @click="focusMode = !focusMode" class="btn-tool" :class="{ active: focusMode }" title="专注模式">{{ focusMode ? '退出专注' : '专注' }}</button>
         </div>
       </div>
@@ -134,7 +241,7 @@
           <div class="ai-bound-tags">
             <span v-for="mat in boundMats" :key="mat.id" class="ai-bound-tag">
               {{ mat.title }}
-              <button @click="boundMats.splice(boundMats.indexOf(mat), 1)" class="ai-bound-remove">✕</button>
+              <button @click="removeBoundMat(mat)" class="ai-bound-remove">✕</button>
             </span>
           </div>
           <button @click="boundMats = []" class="ai-bound-clear">全部清除</button>
@@ -152,46 +259,66 @@
         </span>
       </div>
 
-      <div class="rich-toolbar">
+      <div v-if="showRichToolbar" class="rich-toolbar-wrap">
+        <div class="rich-toolbar">
         <button @click="undo" class="rich-btn" title="撤销 Ctrl+Z" :disabled="!undoStack.length">↩</button>
         <button @click="redo" class="rich-btn" title="恢复 Ctrl+Y" :disabled="!redoStack.length">↪</button>
         <span class="rich-sep">|</span>
-        <button @click="formatText('bold')" class="rich-btn" title="加粗 Ctrl+B"><b>B</b></button>
-        <button @click="formatText('italic')" class="rich-btn" title="斜体 Ctrl+I"><i>I</i></button>
-        <span class="rich-sep">|</span>
-        <button @click="insertIndent" class="rich-btn" title="首行缩进（两个全角空格）">⇥</button>
-        <button @click="insertQuote" class="rich-btn" title="插入引用块">"</button>
-        <button @click="insertChapterTitle" class="rich-btn" title="插入章节标题">章</button>
-        <button @click="insertDivider" class="rich-btn" title="分隔线">—</button>
-        <button @click="insertNewPara" class="rich-btn" title="新段落">¶</button>
-        <span class="rich-sep">|</span>
-        <button @click="fontSizeChange(-1)" class="rich-btn">A-</button>
-        <span class="font-size-label">{{ fontSize }}px</span>
-        <button @click="fontSizeChange(1)" class="rich-btn">A+</button>
+        <select v-model="fontFamily" class="rich-select">
+          <option value="SimSun, STSong, serif">宋体</option>
+          <option value="FangSong, STFangsong, serif">仿宋</option>
+          <option value="KaiTi, STKaiti, serif">楷体</option>
+          <option value="SimHei, STHeiti, sans-serif">黑体</option>
+        </select>
+        <select v-model="fontSize" class="rich-select">
+          <option :value="12">12px</option>
+          <option :value="14">14px</option>
+          <option :value="16">16px</option>
+          <option :value="18">18px</option>
+        </select>
+        <button @click="boldOn = !boldOn" class="rich-btn" :class="{ active: boldOn }"><b>B</b></button>
+        <button @click="italicOn = !italicOn" class="rich-btn" :class="{ active: italicOn }"><i>I</i></button>
         <span class="rich-sep">|</span>
         <select v-model="lineHeightVal" class="rich-select">
-          <option value="1.6">行距 1.6</option>
-          <option value="1.8">行距 1.8</option>
+          <option value="1.0">行距 1.0</option>
+          <option value="1.5">行距 1.5</option>
           <option value="2.0">行距 2.0</option>
-          <option value="2.4">行距 2.4</option>
+        </select>
+        <select v-model="paragraphSpacing" class="rich-select">
+          <option value="1.0">段距 1.0</option>
+          <option value="1.5">段距 1.5</option>
+          <option value="2.0">段距 2.0</option>
         </select>
         <span class="rich-sep">|</span>
+        <button @click="textAlignVal = 'left'" class="rich-btn" :class="{ active: textAlignVal === 'left' }">左</button>
+        <button @click="textAlignVal = 'center'" class="rich-btn" :class="{ active: textAlignVal === 'center' }">中</button>
+        <button @click="textAlignVal = 'right'" class="rich-btn" :class="{ active: textAlignVal === 'right' }">右</button>
+        <button @click="textAlignVal = 'justify'" class="rich-btn" :class="{ active: textAlignVal === 'justify' }">两端</button>
+        <span class="rich-sep">|</span>
+        <button @click="changeIndent(1)" class="rich-btn">缩进</button>
+        <button @click="changeIndent(-1)" class="rich-btn">减缩</button>
+        <button @click="insertCurrentDateTime" class="rich-btn">插入时间/日期</button>
+        <button @click="saveEditorStyle" class="rich-btn">保存样式</button>
+        <button @click="resetTypography" class="rich-btn">恢复默认排版</button>
         <button @click="exportTxt" class="rich-btn rich-btn-export" title="导出为 TXT">↓ TXT</button>
         <button @click="exportDocx" class="rich-btn rich-btn-export" title="导出为 Word">↓ Word</button>
+      </div>
       </div>
 
       <textarea
         ref="editorRef"
         v-model="editorContent"
         class="editor-textarea"
-        :style="{ fontSize: fontSize + 'px', lineHeight: lineHeightVal }"
+        :style="editorStyle"
         placeholder="在此开始创作...&#10;&#10;Tab键首行缩进，Ctrl+B加粗，Ctrl+S保存，Ctrl+Z撤销"
         @keydown.tab.prevent="handleTab"
+        @keydown.enter.prevent="handleEnter"
         @keydown="handleKeydown"
-        @input="startAutoSave"
         @mouseup="handleEditorSelect"
         @keyup="handleEditorSelect"
       ></textarea>
+
+      <div class="editor-word-count">{{ wordCount }} 字</div>
 
       <!-- 选中文本浮动工具栏（行内 AI 操作） -->
       <div v-if="selectionToolbar.show" class="selection-toolbar"
@@ -205,7 +332,7 @@
         <button @click="inlineAction('check')" class="sel-toolbar-btn check" :disabled="inlineLoading" title="检测">⚠️ 检测</button>
         <div class="sel-toolbar-divider"></div>
         <button @click="selectionToolbar.show = false" class="sel-toolbar-close">✕</button>
-      </div>
+          </div>
 
       <!-- / 指令菜单 -->
       <div v-if="slashMenu.show" class="slash-menu"
@@ -221,7 +348,7 @@
             <span class="slash-cmd-desc">{{ cmd.desc }}</span>
           </div>
         </button>
-          </div>
+            </div>
 
       <!-- 行内 AI 生成结果预览条 -->
       <transition name="inline-ai">
@@ -236,7 +363,7 @@
             <button @click="acceptInline" class="inline-accept">✓ 接受</button>
             <button @click="retryInline" class="inline-retry">↺ 重试</button>
             <button @click="discardInline" class="inline-discard">✕ 放弃</button>
-          </div>
+            </div>
             </div>
         <pre v-if="inlineOptions.length <= 1" class="inline-ai-text">{{ inlineResult.text }}</pre>
         <div v-else class="inline-options-list">
@@ -247,9 +374,9 @@
             </div>
             <pre class="inline-option-text">{{ opt }}</pre>
             </div>
-            </div>
-              </div>
-      </transition>
+          </div>
+        </div>
+        </transition>
 
     </div><!-- /editor-area -->
 
@@ -259,12 +386,14 @@
     <div v-if="!aiPanelOpen" class="ai-sidebar-tab" @click="aiPanelOpen = true" title="展开 AI 对话">
       <span class="ai-sidebar-tab-icon">✦</span>
       <span class="ai-sidebar-tab-text">AI</span>
-    </div>
+      </div>
     <AIChatPanel
       v-if="aiPanelOpen"
       :bound-mats="boundMats"
       :outline="pinnedOutline"
       :chars="charProfiles"
+      :world-setting="worldSettingBound"
+      :plot-hooks="hooksBound"
       :editor-content="editorContent"
       :style-name="continueStyle"
       :words="continueWords"
@@ -272,9 +401,70 @@
       @update:chars="charProfiles = $event"
       @update:bound-mats="boundMats = $event"
       @accept-msg="handleAcceptMsg"
+      @collapse="aiPanelOpen = false"
     />
   </div><!-- /ai-sidebar -->
 </div><!-- /workspace-shell -->
+
+  <!-- 人物卡编辑弹窗 -->
+  <transition name="modal-fade">
+  <div v-if="charCardEditing" class="char-modal-mask" @click.self="charCardEditing = null">
+    <div class="char-modal-dialog">
+      <div class="char-modal-hd">
+        <div class="char-modal-title">
+          <span class="char-modal-icon">👤</span>
+          <span>{{ charCardForm.id ? '编辑人物' : '新增人物' }}</span>
+        </div>
+        <button class="char-modal-close" @click="charCardEditing = null">✕</button>
+      </div>
+      <div class="char-modal-body">
+        <div class="char-fields-grid">
+          <div class="char-field">
+            <label class="char-label">姓名 <span class="char-required">*</span></label>
+            <input v-model="charCardForm.name" class="char-input" placeholder="如：李明远" />
+          </div>
+          <div class="char-field">
+            <label class="char-label">别名 / 字号</label>
+            <input v-model="charCardForm.alias" class="char-input" placeholder="如：字子谦、人称寒刀" />
+          </div>
+          <div class="char-field">
+            <label class="char-label">性别</label>
+            <select v-model="charCardForm.gender" class="char-input char-select">
+              <option value="">不限</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <div class="char-field">
+            <label class="char-label">身份 / 职位</label>
+            <input v-model="charCardForm.identity" class="char-input" placeholder="如：寒门举子、北境将领" />
+          </div>
+        </div>
+        <div class="char-field char-field-full">
+          <label class="char-label">性格特征</label>
+          <textarea v-model="charCardForm.personality" class="char-textarea" rows="3" placeholder="如：沉稳内敛，遇事冷静，不轻易表露情感，逆境中愈发坚毅"></textarea>
+        </div>
+        <div class="char-field char-field-full">
+          <label class="char-label">核心动机</label>
+          <textarea v-model="charCardForm.motivation" class="char-textarea" rows="3" placeholder="如：为家族复仇，重振门楣；亦渴望在乱世中寻得一片安宁"></textarea>
+        </div>
+        <div class="char-field char-field-full">
+          <label class="char-label">关系网络</label>
+          <textarea v-model="charCardForm.relationships" class="char-textarea" rows="3" placeholder="如：与主角李明远为旧识，共历北境之役；与反派沈云有夺父之仇"></textarea>
+        </div>
+        <div class="char-field char-field-full">
+          <label class="char-label">外貌 / 口头禅 / 备注</label>
+          <textarea v-model="charCardForm.notes" class="char-textarea" rows="3" placeholder="如：身形颀长，眉眼清冷；惯用'无妨'二字；左手有一道旧伤"></textarea>
+        </div>
+      </div>
+      <div class="char-modal-footer">
+        <button @click="charCardEditing = null" class="char-btn-cancel">取消</button>
+        <button @click="saveCharCard" class="char-btn-save">✓ 保存人物卡</button>
+      </div>
+    </div>
+  </div>
+  </transition>
 
   <!-- 素材详情弹窗 -->
   <transition name="modal-fade">
@@ -302,7 +492,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { materialApi } from '../api/material'
 import { userMaterialApi } from '../api/userMaterial'
-import { worksApi } from '../api/works'
+import { worksApi, seriesApi } from '../api/works'
 import AIChatPanel from '../components/AIChatPanel.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -317,6 +507,8 @@ const workspaceStore = useWorkspaceStore()
 // § 2. 作品 & 编辑器基础状态
 // ═══════════════════════════════════════════════════════════
 const workId = ref(null)
+const workGroupName = ref('')   // 当前作品所属组名
+const seriesLoaded = ref(false) // 是否已加载过系列档案
 const saving = ref(false)
 const saveStatus = ref('')
 const saveStatusText = computed(() =>
@@ -334,9 +526,16 @@ const editorContent = ref('')
 const editorRef = ref(null)
 const insertBanner = ref('')
 const insertingId = ref(null)
-const fontSize = ref(16)
-const lineHeightVal = ref('1.8')
+const fontFamily = ref(localStorage.getItem('workspace_font_family') || 'KaiTi, STKaiti, serif')
+const fontSize = ref(Number(localStorage.getItem('workspace_font_size')) || 16)
+const lineHeightVal = ref(localStorage.getItem('workspace_line_height') || '1.5')
+const paragraphSpacing = ref(localStorage.getItem('workspace_para_spacing') || '1.5')
+const textAlignVal = ref(localStorage.getItem('workspace_text_align') || 'left')
+const boldOn = ref(localStorage.getItem('workspace_bold') === 'true')
+const italicOn = ref(localStorage.getItem('workspace_italic') === 'true')
+const indentChars = ref(Number(localStorage.getItem('workspace_indent_chars') || 2))
 const focusMode = ref(false)
+const showRichToolbar = ref(false)
 
 // ═══════════════════════════════════════════════════════════
 // § 3. 左侧面板：素材库
@@ -388,8 +587,8 @@ async function searchMats() {
   matLoading.value = true
   try {
     const res = await materialApi.search({
-      category: matCategory.value || undefined,
-      keyword: matKeyword.value || undefined,
+      category: matCategory.value?.trim() || undefined,
+      keyword: matKeyword.value?.trim() || undefined,
       page: matPage.value, size: matPageSize,
     })
     if (res.data?.code === 200 && res.data?.data) {
@@ -397,6 +596,11 @@ async function searchMats() {
       matTotal.value = res.data.data.total || 0
     }
   } catch(e) { console.error(e) } finally { matLoading.value = false }
+}
+
+function applyMatSearch() {
+  matPage.value = 1
+  searchMats()
 }
 
 function prevMatPage() { if (matPage.value > 1) { matPage.value--; searchMats() } }
@@ -432,6 +636,11 @@ async function loadFavMats() {
 // ═══════════════════════════════════════════════════════════
 // § 13. 作品加载 & 保存 & 自动保存
 // ═══════════════════════════════════════════════════════════
+function normalizeGroupName(name) {
+  const g = String(name ?? '').trim()
+  return (!g || g === '未分组') ? '' : g
+}
+
 async function loadWork(id) {
   try {
     const res = await worksApi.get(id)
@@ -439,6 +648,7 @@ async function loadWork(id) {
       docTitle.value = res.data.data.title || '未命名'
       editorContent.value = res.data.data.content || ''
       workId.value = res.data.data.id
+      workGroupName.value = normalizeGroupName(res.data.data.groupName)
       // 恢复大纲和人物设定
       pinnedOutline.value = res.data.data.pinnedOutline || ''
       charProfiles.value = res.data.data.charProfiles || ''
@@ -447,8 +657,74 @@ async function loadWork(id) {
         const od = res.data.data.outlineData
         outlineChapters.value = od ? JSON.parse(od) : []
       } catch(e) { outlineChapters.value = [] }
+      // 恢复人物卡
+      try {
+        const cpj = res.data.data.charProfilesJson
+        charCards.value = cpj ? JSON.parse(cpj) : []
+      } catch(e) { charCards.value = [] }
+      // 恢复世界观
+      try {
+        const ws = res.data.data.worldSetting
+        const parsed = ws ? JSON.parse(ws) : {}
+        worldSetting.value = { dynasty: '', geography: '', society: '', taboo: '', other: '', ...parsed }
+        // 如果世界观有内容，自动恢复绑定状态
+        worldSettingBound.value = buildWorldText()
+      } catch(e) { worldSetting.value = { dynasty: '', geography: '', society: '', taboo: '', other: '' } }
+      // 恢复伏笔
+      try {
+        const ph = res.data.data.plotHooks
+        plotHooks.value = ph ? JSON.parse(ph) : []
+      } catch(e) { plotHooks.value = [] }
+      // 如果有分组，加载系列共享档案
+      if (workGroupName.value && !seriesLoaded.value) {
+        await loadSeries(workGroupName.value)
+      }
     }
   } catch(e) { console.error(e) }
+}
+
+async function loadSeries(groupName) {
+  groupName = normalizeGroupName(groupName)
+  if (!groupName) return
+  try {
+    const res = await seriesApi.get(groupName)
+    if (res.data?.code === 200 && res.data?.data) {
+      const s = res.data.data
+      // 系列档案：仅共享人物/世界观（章节大纲仍走章节级）
+      if (s.charProfiles) charProfiles.value = s.charProfiles
+      try {
+        const cpj = s.charProfilesJson
+        if (cpj) charCards.value = JSON.parse(cpj)
+      } catch(e) {}
+      try {
+        const ws = s.worldSetting
+        if (ws) {
+          const parsed = JSON.parse(ws)
+          worldSetting.value = { dynasty: '', geography: '', society: '', taboo: '', other: '', ...parsed }
+          worldSettingBound.value = buildWorldText()
+        }
+      } catch(e) {}
+      try {
+        const ph = s.plotHooks
+        if (ph) plotHooks.value = JSON.parse(ph)
+      } catch(e) {}
+      seriesLoaded.value = true
+    }
+  } catch(e) { console.error('系列档案加载失败', e) }
+}
+
+async function saveSeries() {
+  const groupName = normalizeGroupName(workGroupName.value)
+  if (!groupName) return
+  try {
+    await seriesApi.save({
+      groupName,
+      charProfiles: charProfiles.value,
+      charProfilesJson: JSON.stringify(charCards.value),
+      worldSetting: JSON.stringify(worldSetting.value),
+      plotHooks: JSON.stringify(plotHooks.value),
+    })
+  } catch(e) { console.error('系列档案保存失败', e) }
 }
 
 async function saveWork() {
@@ -472,7 +748,10 @@ async function saveWork() {
         content: editorContent.value,
         pinnedOutline: pinnedOutline.value,
         charProfiles: charProfiles.value,
-        outlineData: JSON.stringify(outlineChapters.value)
+        outlineData: JSON.stringify(outlineChapters.value),
+        charProfilesJson: JSON.stringify(charCards.value),
+        worldSetting: JSON.stringify(worldSetting.value),
+        plotHooks: JSON.stringify(plotHooks.value),
       })
     }
     if (res.data?.code === 200) {
@@ -526,44 +805,107 @@ function insertMat(item) {
   const s = ta.selectionStart, e = ta.selectionEnd
   const ins = `\n【${item.title}】\n${item.content}\n`
   editorContent.value = editorContent.value.slice(0,s) + ins + editorContent.value.slice(e)
+  startAutoSave()
   insertBanner.value = item.title
   setTimeout(() => { insertBanner.value = '' }, 3000)
   const np = s + ins.length
   setTimeout(() => { ta.focus(); ta.setSelectionRange(np,np) }, 0)
 }
 
+const editorStyle = computed(() => ({
+  fontFamily: fontFamily.value,
+  fontSize: `${fontSize.value}px`,
+  lineHeight: lineHeightVal.value,
+  fontWeight: boldOn.value ? '700' : '400',
+  fontStyle: italicOn.value ? 'italic' : 'normal',
+  textAlign: textAlignVal.value,
+}))
+
 function formatText(type) {
-  const ta = editorRef.value; if (!ta) return
-  const s = ta.selectionStart, e = ta.selectionEnd
-  const sel = editorContent.value.slice(s,e); if (!sel) return
-  const w = type === 'bold' ? `**${sel}**` : `*${sel}*`
-  editorContent.value = editorContent.value.slice(0,s) + w + editorContent.value.slice(e)
-  setTimeout(() => ta.setSelectionRange(s, s+w.length), 0)
+  if (type === 'bold') boldOn.value = !boldOn.value
+  if (type === 'italic') italicOn.value = !italicOn.value
 }
 
-function insertDivider() {
+function indentText() {
+  return '　'.repeat(Math.max(0, indentChars.value))
+}
+
+function changeIndent(delta) {
+  indentChars.value = Math.max(0, Math.min(8, indentChars.value + delta))
+}
+
+function insertCurrentDateTime() {
   const ta = editorRef.value; if (!ta) return
-  const p = ta.selectionStart
-  const d = '\n\n————————————\n\n'
-  editorContent.value = editorContent.value.slice(0,p) + d + editorContent.value.slice(p)
-  setTimeout(() => ta.setSelectionRange(p+d.length, p+d.length), 0)
+  const s = ta.selectionStart
+  const now = new Date()
+  const date = now.toLocaleDateString('zh-CN')
+  const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const ins = `【${date} ${time}】`
+  editorContent.value = editorContent.value.slice(0, s) + ins + editorContent.value.slice(s)
+  setTimeout(() => ta.setSelectionRange(s + ins.length, s + ins.length), 0)
+}
+
+function paragraphGap() {
+  const map = { '1.0': '\n', '1.5': '\n\n', '2.0': '\n\n\n' }
+  return map[paragraphSpacing.value] || '\n\n'
+}
+
+function insertIndent() {
+  const ta = editorRef.value; if (!ta) return
+  const s = ta.selectionStart
+  const before = editorContent.value.slice(0, s)
+  const lineStart = before.lastIndexOf('\n') + 1
+  const t = indentText()
+  editorContent.value = editorContent.value.slice(0, lineStart) + t + editorContent.value.slice(lineStart)
+  setTimeout(() => ta.setSelectionRange(s + t.length, s + t.length), 0)
 }
 
 function insertNewPara() {
   const ta = editorRef.value; if (!ta) return
   const p = ta.selectionStart
-  editorContent.value = editorContent.value.slice(0,p) + '\n\n' + editorContent.value.slice(p)
-  setTimeout(() => ta.setSelectionRange(p+2, p+2), 0)
+  const insert = paragraphGap() + indentText()
+  editorContent.value = editorContent.value.slice(0,p) + insert + editorContent.value.slice(p)
+  setTimeout(() => ta.setSelectionRange(p + insert.length, p + insert.length), 0)
 }
 
-function fontSizeChange(d) { fontSize.value = Math.max(12, Math.min(28, fontSize.value + d)) }
+function resetTypography() {
+  fontFamily.value = 'KaiTi, STKaiti, serif'
+  fontSize.value = 16
+  lineHeightVal.value = '1.5'
+  paragraphSpacing.value = '1.5'
+  textAlignVal.value = 'left'
+  boldOn.value = false
+  italicOn.value = false
+  indentChars.value = 2
+}
+
+function saveEditorStyle() {
+  localStorage.setItem('workspace_font_family', String(fontFamily.value))
+  localStorage.setItem('workspace_font_size', String(fontSize.value))
+  localStorage.setItem('workspace_line_height', String(lineHeightVal.value))
+  localStorage.setItem('workspace_para_spacing', String(paragraphSpacing.value))
+  localStorage.setItem('workspace_text_align', String(textAlignVal.value))
+  localStorage.setItem('workspace_bold', String(boldOn.value))
+  localStorage.setItem('workspace_italic', String(italicOn.value))
+  localStorage.setItem('workspace_indent_chars', String(indentChars.value))
+  insertBanner.value = '排版样式已保存'
+  setTimeout(() => { insertBanner.value = '' }, 1600)
+}
 
 function handleTab() {
   const ta = editorRef.value; if (!ta) return
   const s = ta.selectionStart
-  // 首行缩进用两个全角空格
-  editorContent.value = editorContent.value.slice(0,s) + '　　' + editorContent.value.slice(s)
-  setTimeout(() => ta.setSelectionRange(s+2, s+2), 0)
+  const t = indentText()
+  editorContent.value = editorContent.value.slice(0,s) + t + editorContent.value.slice(s)
+  setTimeout(() => ta.setSelectionRange(s + t.length, s + t.length), 0)
+}
+
+function handleEnter() {
+  const ta = editorRef.value; if (!ta) return
+  const s = ta.selectionStart, e = ta.selectionEnd
+  const insert = paragraphGap() + indentText()
+  editorContent.value = editorContent.value.slice(0, s) + insert + editorContent.value.slice(e)
+  setTimeout(() => ta.setSelectionRange(s + insert.length, s + insert.length), 0)
 }
 
 // ── 撤销/重做历史栈 ───────────────────────────────────────────
@@ -577,6 +919,18 @@ watch(editorContent, (newVal, oldVal) => {
   undoStack.value.push(oldVal)
   if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift()
   redoStack.value = []
+  startAutoSave()
+})
+
+watch([fontFamily, fontSize, lineHeightVal, paragraphSpacing, textAlignVal, boldOn, italicOn, indentChars], () => {
+  localStorage.setItem('workspace_font_family', String(fontFamily.value))
+  localStorage.setItem('workspace_font_size', String(fontSize.value))
+  localStorage.setItem('workspace_line_height', String(lineHeightVal.value))
+  localStorage.setItem('workspace_para_spacing', String(paragraphSpacing.value))
+  localStorage.setItem('workspace_text_align', String(textAlignVal.value))
+  localStorage.setItem('workspace_bold', String(boldOn.value))
+  localStorage.setItem('workspace_italic', String(italicOn.value))
+  localStorage.setItem('workspace_indent_chars', String(indentChars.value))
 })
 
 function undo() {
@@ -593,48 +947,6 @@ function redo() {
   undoStack.value.push(editorContent.value)
   editorContent.value = redoStack.value.pop()
   nextTick(() => { isUndoRedo = false })
-}
-
-// ═══════════════════════════════════════════════════════════
-// § 8. 编辑器操作：格式插入辅助
-// ═══════════════════════════════════════════════════════════
-// ── 格式插入辅助 ─────────────────────────────────────────────
-function insertAtCursor(before, after = '') {
-  const ta = editorRef.value; if (!ta) return
-  const s = ta.selectionStart, e = ta.selectionEnd
-  const sel = editorContent.value.slice(s, e)
-  const replacement = before + sel + after
-  editorContent.value = editorContent.value.slice(0, s) + replacement + editorContent.value.slice(e)
-  const cursor = s + before.length + sel.length + after.length
-  setTimeout(() => ta.setSelectionRange(cursor, cursor), 0)
-}
-
-function insertIndent() {
-  const ta = editorRef.value; if (!ta) return
-  const s = ta.selectionStart
-  // 在当前行开头插入两个全角空格（首行缩进）
-  const before = editorContent.value.slice(0, s)
-  const lineStart = before.lastIndexOf('\n') + 1
-  editorContent.value = editorContent.value.slice(0, lineStart) + '　　' + editorContent.value.slice(lineStart)
-  setTimeout(() => ta.setSelectionRange(s + 2, s + 2), 0)
-}
-
-function insertQuote() {
-  const ta = editorRef.value; if (!ta) return
-  const s = ta.selectionStart, e = ta.selectionEnd
-  const sel = editorContent.value.slice(s, e).trim() || '引用内容'
-  const q = `\n\n　　「${sel}」\n\n`
-  editorContent.value = editorContent.value.slice(0, s) + q + editorContent.value.slice(e)
-  setTimeout(() => ta.setSelectionRange(s + q.length, s + q.length), 0)
-}
-
-function insertChapterTitle() {
-  const ta = editorRef.value; if (!ta) return
-  const s = ta.selectionStart
-  const t = '\n\n第　章\n\n'
-  editorContent.value = editorContent.value.slice(0, s) + t + editorContent.value.slice(s)
-  const pos = s + 4 // 光标落在「第」后
-  setTimeout(() => { ta.focus(); ta.setSelectionRange(pos, pos) }, 0)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -838,6 +1150,182 @@ function runSlashCommand(cmd) {
 // ═══════════════════════════════════════════════════════════
 // § 10. 大纲操作函数
 // ═══════════════════════════════════════════════════════════
+
+// ── 人物卡状态 ───────────────────────────────────────────────
+const charCards = ref([])
+const charCardEditing = ref(false)
+const charCardForm = ref({ id: null, name: '', alias: '', gender: '', identity: '', personality: '', motivation: '', relationships: '', notes: '' })
+
+function addCharCard() {
+  charCardForm.value = { id: null, name: '', alias: '', gender: '', identity: '', personality: '', motivation: '', relationships: '', notes: '' }
+  charCardEditing.value = true
+}
+
+function editCharCard(ch) {
+  charCardForm.value = { ...ch }
+  charCardEditing.value = true
+}
+
+function saveCharCard() {
+  if (!charCardForm.value.name.trim()) return
+  if (charCardForm.value.id) {
+    const idx = charCards.value.findIndex(c => c.id === charCardForm.value.id)
+    if (idx >= 0) charCards.value[idx] = { ...charCardForm.value }
+  } else {
+    charCards.value.push({ ...charCardForm.value, id: Date.now() })
+  }
+  charCardEditing.value = false
+  saveOutline()
+}
+
+function deleteCharCard(id) {
+  charCards.value = charCards.value.filter(c => c.id !== id)
+  saveOutline()
+}
+
+function bindCharCardToAI(ch) {
+  const cardText = `【${ch.name}${ch.alias ? '（' + ch.alias + '）' : ''}】${
+    ch.gender ? ' ' + ch.gender : ''}${
+    ch.identity ? '，' + ch.identity : ''}\n性格：${ch.personality || '未设定'}\n动机：${ch.motivation || '未设定'}${
+    ch.relationships ? '\n关系：' + ch.relationships : ''}${
+    ch.notes ? '\n备注：' + ch.notes : ''}`
+
+  if (charProfiles.value.includes(ch.name)) {
+    // 取消绑定：移除该人物段落
+    const parts = charProfiles.value.split(/\n(?=【)/)
+    charProfiles.value = parts.filter(p => !p.includes(ch.name)).join('\n').trim()
+  } else {
+    charProfiles.value = charProfiles.value
+      ? charProfiles.value.trimEnd() + '\n\n' + cardText
+      : cardText
+    aiPanelOpen.value = true
+  }
+}
+
+function bindAllCharsToAI() {
+  if (!charCards.value.length) return
+  const text = charCards.value.map(ch =>
+    `【${ch.name}${ch.alias ? '（' + ch.alias + '）' : ''}】${
+      ch.gender ? ' ' + ch.gender : ''}${
+      ch.identity ? '，' + ch.identity : ''}\n性格：${ch.personality || '未设定'}\n动机：${ch.motivation || '未设定'}${
+      ch.relationships ? '\n关系：' + ch.relationships : ''}${
+      ch.notes ? '\n备注：' + ch.notes : ''}`
+  ).join('\n\n')
+  charProfiles.value = text
+  aiPanelOpen.value = true
+}
+
+// ── 世界观状态 ───────────────────────────────────────────────
+const worldSetting = ref({ dynasty: '', geography: '', society: '', taboo: '', other: '' })
+const worldSettingBound = ref('')  // 独立绑定通道，不污染 pinnedOutline
+const worldBound = computed(() => !!worldSettingBound.value.trim())
+
+const worldModules = ref([
+  { key: 'dynasty', icon: '🏯', label: '朝代 / 时代背景', placeholder: '如：武周盛世，神龙元年前后，女帝当政，百官朝圣...', open: true },
+  { key: 'geography', icon: '🗺️', label: '地理 / 重要场所', placeholder: '如：神都洛阳，则天门、含元殿；北境云州，阴山隘口...', open: false },
+  { key: 'society', icon: '⚖️', label: '社会制度 / 阶层', placeholder: '如：科举取士，寒门与世族之争；九品官制，品阶与权力...', open: false },
+  { key: 'taboo', icon: '🚫', label: '禁忌 / 规则 / 设定', placeholder: '如：不得直呼圣名；女官制度特殊晋升规则；私藏兵器罪同谋逆...', open: false },
+  { key: 'other', icon: '📝', label: '其他设定 / 备注', placeholder: '如：特殊武器/法术设定、文化习俗、方言用词规范...', open: false },
+])
+
+function onWorldInput() {
+  saveOutline()
+}
+
+function toggleWorldModule(mod) {
+  mod.open = !mod.open
+}
+
+function buildWorldText() {
+  return worldModules.value
+    .filter(m => worldSetting.value[m.key]?.trim())
+    .map(m => `【${m.label}】\n${worldSetting.value[m.key].trim()}`)
+    .join('\n\n')
+}
+
+function bindWorldToAI() {
+  const text = buildWorldText()
+  if (!text) return
+  // 世界观走独立通道，直接存入 worldSettingBound，不污染 pinnedOutline
+  worldSettingBound.value = text
+  aiPanelOpen.value = true
+}
+
+function clearWorldBinding() {
+  worldSettingBound.value = ''
+}
+
+// ── 伏笔状态（组级共享） ───────────────────────────────────────
+const plotHooks = ref([])
+const hookFilter = ref('open') // all | open | resolved
+const hooksBound = computed(() => buildOpenHooksText())
+
+const currentChapterLabel = computed(() => {
+  const writing = outlineChapters.value.find(c => c.status === 'writing')
+  if (writing) return writing.title || '当前章节'
+  const last = outlineChapters.value[outlineChapters.value.length - 1]
+  return last?.title || '当前章节'
+})
+
+const filteredHooks = computed(() => {
+  if (hookFilter.value === 'all') return plotHooks.value
+  if (hookFilter.value === 'open') return plotHooks.value.filter(h => !h.resolved)
+  return plotHooks.value.filter(h => h.resolved)
+})
+
+function addHook() {
+  const title = window.prompt('请输入伏笔标题（简短）')?.trim()
+  if (!title) return
+  const note = window.prompt('请输入伏笔说明（可选）')?.trim() || ''
+  plotHooks.value.unshift({
+    id: Date.now(),
+    title,
+    note,
+    sourceChapter: currentChapterLabel.value,
+    resolved: false,
+    resolvedChapter: '',
+    createdAt: new Date().toISOString(),
+  })
+  saveOutline()
+}
+
+function toggleHookResolved(id) {
+  const h = plotHooks.value.find(x => x.id === id)
+  if (!h) return
+  h.resolved = !h.resolved
+  h.resolvedChapter = h.resolved ? currentChapterLabel.value : ''
+  saveOutline()
+}
+
+function deleteHook(id) {
+  plotHooks.value = plotHooks.value.filter(h => h.id !== id)
+  saveOutline()
+}
+
+function insertHookToEditor(hook) {
+  const ta = editorRef.value
+  if (!ta) return
+  const p = ta.selectionStart
+  const text = `\n【伏笔】${hook.title}\n${hook.note || ''}\n`
+  editorContent.value = editorContent.value.slice(0, p) + text + editorContent.value.slice(p)
+  startAutoSave()
+  setTimeout(() => ta.setSelectionRange(p + text.length, p + text.length), 0)
+  insertBanner.value = `伏笔：${hook.title}`
+  setTimeout(() => { insertBanner.value = '' }, 2000)
+}
+
+function buildOpenHooksText() {
+  const opens = plotHooks.value.filter(h => !h.resolved)
+  if (!opens.length) return ''
+  return opens.map((h, i) =>
+    `${i + 1}. 【${h.title}】（来源：${h.sourceChapter || '未知章节'}）${h.note ? '\n   说明：' + h.note : ''}`
+  ).join('\n')
+}
+
+function bindHooksToAI() {
+  if (hooksBound.value) aiPanelOpen.value = true
+}
+
 // ── 大纲操作函数 ─────────────────────────────────────────────
 function addChapter() {
   outlineForm.value = { vol: '', title: '', summary: '', characters: '' }
@@ -883,6 +1371,31 @@ function insertChapterMark(ch) {
   const mark = `\n\n${ch.vol ? ch.vol + '\n' : ''}${ch.title}\n${'─'.repeat(16)}\n\n`
   editorContent.value = editorContent.value.slice(0, p) + mark + editorContent.value.slice(p)
   setTimeout(() => { ta.focus(); ta.setSelectionRange(p + mark.length, p + mark.length) }, 0)
+}
+
+function bindChapterToAI(ch) {
+  // 把该章节内容追加（或设置）到 pinnedOutline，并同步到 AI 面板
+  const chText = `第${outlineChapters.value.indexOf(ch) + 1}章：${ch.title}${
+    ch.summary ? '\n  情节：' + ch.summary : ''}${
+    ch.characters ? '\n  人物：' + ch.characters : ''}`
+
+  if (pinnedOutline.value.includes(ch.title)) {
+    // 已绑定则移除该章节
+    const lines = pinnedOutline.value.split('\n')
+    const startIdx = lines.findIndex(l => l.includes(ch.title))
+    if (startIdx >= 0) {
+      // 移除该章节（连续行直到下一章或结尾）
+      let endIdx = startIdx + 1
+      while (endIdx < lines.length && !lines[endIdx].startsWith('第')) endIdx++
+      lines.splice(startIdx, endIdx - startIdx)
+      pinnedOutline.value = lines.join('\n').trim()
+    }
+  } else {
+    pinnedOutline.value = pinnedOutline.value
+      ? pinnedOutline.value.trimEnd() + '\n\n' + chText
+      : chText
+    aiPanelOpen.value = true
+  }
 }
 
 // 将大纲锁定到续写面板
@@ -954,9 +1467,14 @@ function saveOutline() {
       content: editorContent.value,
       pinnedOutline: pinnedOutline.value,
       charProfiles: charProfiles.value,
-      outlineData: JSON.stringify(outlineChapters.value)
+      outlineData: JSON.stringify(outlineChapters.value),
+      charProfilesJson: JSON.stringify(charCards.value),
+      worldSetting: JSON.stringify(worldSetting.value),
+      plotHooks: JSON.stringify(plotHooks.value),
     })
   }).catch(e => console.error('大纲保存失败', e))
+  // 同步到系列共享档案
+  saveSeries()
 }
 
 function clearEditor() {
@@ -1002,6 +1520,22 @@ const pinnedOutline = ref('')
 const charProfiles = ref('')
 const continueStyle = ref('典雅')
 const continueWords = ref(200)
+
+function removeBoundMat(mat) {
+  const idx = boundMats.value.indexOf(mat)
+  if (idx >= 0) boundMats.value.splice(idx, 1)
+}
+
+function applyToAI(item) {
+  const idx = boundMats.value.findIndex(m => m.id === item.id)
+  if (idx >= 0) {
+    boundMats.value.splice(idx, 1)
+    return
+  }
+  if (boundMats.value.length >= 5) boundMats.value.shift()
+  boundMats.value.push(item)
+  aiPanelOpen.value = true
+}
 // 能实际发送给后端的素材数量（过滤 mine_ 前缀）
 const validBoundMatsCount = computed(() =>
   boundMats.value.filter(m => /^\d+$/.test(String(m.id))).length
@@ -1069,40 +1603,46 @@ function clearHistory() {
   localStorage.removeItem('ai_history')
 }
 
-function applyToAI(item) {
-  // 若已绑定则取消，否则添加（最多5个）
-  const idx = boundMats.value.findIndex(m => m.id === item.id)
-  if (idx >= 0) {
-    boundMats.value.splice(idx, 1)
-  } else {
-    if (boundMats.value.length >= 5) {
-      boundMats.value.shift() // 超过5个时移除最早绑定的
-    }
-    boundMats.value.push(item)
-  }
-  aiPanelOpen.value = true
-}
-
 function openMatDetail(item) {
   matDetail.value = item
 }
 
+function formatAiParagraphs(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n')
+  const paragraphs = []
+  let cur = []
+  for (const line of lines) {
+    if (line.trim()) {
+      cur.push(line.trim())
+    } else if (cur.length) {
+      paragraphs.push(cur.join(''))
+      cur = []
+    }
+  }
+  if (cur.length) paragraphs.push(cur.join(''))
+  const indent = indentText()
+  const gap = paragraphGap()
+  return paragraphs.map(p => `${indent}${p}`).join(gap)
+}
+
 // AI 对话面板：接受消息插入编辑器
 function handleAcceptMsg({ content, mode }) {
+  const formatted = formatAiParagraphs(content)
   if (mode === 'append') {
-    editorContent.value = editorContent.value.trimEnd() + '\n\n' + content + '\n'
+    editorContent.value = editorContent.value.trimEnd() + '\n\n' + formatted + '\n'
     insertBanner.value = '✓ 已追加到编辑器'
   } else {
     const ta = editorRef.value
     if (ta && ta.selectionStart !== ta.selectionEnd) {
       const s = ta.selectionStart, e = ta.selectionEnd
-      editorContent.value = editorContent.value.slice(0, s) + content + editorContent.value.slice(e)
+      editorContent.value = editorContent.value.slice(0, s) + formatted + editorContent.value.slice(e)
       insertBanner.value = '✓ 已替换选中区'
     } else {
-      editorContent.value = editorContent.value.trimEnd() + '\n\n' + content + '\n'
+      editorContent.value = editorContent.value.trimEnd() + '\n\n' + formatted + '\n'
       insertBanner.value = '✓ 已追加到编辑器'
     }
   }
+  startAutoSave()
   setTimeout(() => { insertBanner.value = '' }, 2500)
 }
 
@@ -1197,21 +1737,24 @@ function acceptInline() {
   const appendActions = ['continue', 'scene', 'dialogue', 'outline', 'title']
   if (appendActions.includes(action)) {
     const cur = editorContent.value
-    editorContent.value = cur.trimEnd() + '\n\n' + newText + '\n'
+    const formatted = formatAiParagraphs(newText)
+    editorContent.value = cur.trimEnd() + '\n\n' + formatted + '\n'
     inlineResult.value.show = false
     const labelMapA = { continue: '续写', scene: '场景', dialogue: '对话', outline: '大纲', title: '标题' }
     aiSegments.value.push({ text: newText.trim(), label: labelMapA[action] || 'AI' })
+    startAutoSave()
     insertBanner.value = '✓ 已插入到文章末尾'
     setTimeout(() => { insertBanner.value = '' }, 2000)
     return
   }
 
   // 替换类操作（润色/扩写/改写）：替换选中文本
-  editorContent.value = editorContent.value.slice(0, start) + newText + editorContent.value.slice(end)
+  editorContent.value = editorContent.value.slice(0, start) + formatAiParagraphs(newText) + editorContent.value.slice(end)
   // 记录 AI 修改段落
   const labelMap2 = { polish: '润色', expand: '扩写', rewrite: '改写' }
   aiSegments.value.push({ text: newText.trim(), label: labelMap2[action] || 'AI' })
   inlineResult.value.show = false
+  startAutoSave()
   insertBanner.value = `✓ 已${action === 'polish' ? '润色' : action === 'expand' ? '扩写' : '改写'}`
   setTimeout(() => { insertBanner.value = '' }, 2000)
 }
@@ -1221,7 +1764,8 @@ function acceptOption(idx) {
   if (!opt) return
   const start = inlineSelStart.value
   const end = inlineSelEnd.value
-  editorContent.value = editorContent.value.slice(0, start) + opt + editorContent.value.slice(end)
+  editorContent.value = editorContent.value.slice(0, start) + formatAiParagraphs(opt) + editorContent.value.slice(end)
+  startAutoSave()
   inlineOptions.value = []
   inlineResult.value.show = false
   insertBanner.value = '✓ 已选用方案 ' + (idx + 1)
@@ -1266,6 +1810,33 @@ function discardInline() {
 // ═══════════════════════════════════════════════════════════
 // § 12. AI 调用核心（PROMPTS + callSpark + runXxx）
 // ═══════════════════════════════════════════════════════════
+function buildAiSystemPrompt() {
+  const outline = pinnedOutline.value?.trim()
+  const chars = charProfiles.value?.trim()
+  const tail = editorContent.value?.trim().slice(-800)
+  const mats = (boundMats.value || []).slice(0, 5)
+
+  let sys = `你是历史小说创作助手。回答时必须优先使用用户绑定上下文：绑定素材、故事大纲、人物设定、编辑区内容。\n`
+  sys += `若与常识冲突，以绑定上下文为准；仅在信息不足时做最小必要补全。\n`
+  sys += `默认只输出可直接使用的内容，不要题外话。输出请使用自然分段，段间空一行；每段首行请使用两个全角空格缩进。\n\n`
+
+  if (mats.length) {
+    sys += '【绑定素材（最高优先级）】\n'
+    mats.forEach((m, i) => {
+      const title = m?.title || `素材${i + 1}`
+      const content = (m?.content || '').slice(0, 500)
+      sys += `${i + 1}. ${title}\n${content}\n\n`
+    })
+  }
+  if (outline) sys += `【故事大纲（最高优先级）】\n${outline}\n\n`
+  if (chars) sys += `【人物设定（最高优先级）】\n${chars}\n\n`
+  if (worldSettingBound.value?.trim()) sys += `【世界观/设定（最高优先级）】\n${worldSettingBound.value.trim()}\n\n`
+  if (hooksBound.value?.trim()) sys += `【未回收伏笔（必须优先呼应）】\n${hooksBound.value.trim()}\n\n`
+  if (tail) sys += `【编辑区末尾内容（最高优先级上下文）】\n${tail}\n\n`
+
+  return sys
+}
+
 const PROMPTS = {
   context: (year, place) =>
     `你是专业的中国历史顾问，服务于历史小说创作者。
@@ -1311,43 +1882,76 @@ ${text}
 场景要素：${scene}`,
 
   continue: (text, style, wordCount, outline, chars) =>
-    `你是擅长历史题材的文学作家，文风${style}。
-${outline ? '【当前故事大纲（必须严格遵循，续写情节不得偏离大纲走向）】\n' + outline + '\n\n' : ''}${chars ? '【主要人物设定（人物性格、身份必须与此一致）】\n' + chars + '\n\n' : ''}请根据以下已有文段，续写约${wordCount || 200}字，要求：
-- 风格、人称、视角与原文保持一致
-- 情节必须基于大纲走向展开（如有大纲，须在续写末尾括号注明参考了哪一章节）
-- 若绑定了参考素材，须将素材中的历史细节自然融入续写，并在末尾标注 [素材引用: 素材标题]
-- 历史细节准确，不出现现代词汇
-- 直接输出续写内容，末尾附引用标注
+    `任务：长篇小说续写（高约束模式）
+
+请严格按以下要求生成：
+1）优先依据已绑定素材、大纲、人物设定、编辑区末尾上下文；
+2）与现有叙事保持同一人称、时态、语气和节奏；
+3）推进当前冲突，不跳时间线，不新增重大设定；
+4）人物行为符合既有人设与动机；
+5）生成长度约${wordCount || 200}字，风格偏${style}。
+${outline ? `
+【当前故事大纲（最高优先级）】
+${outline}
+` : ''}
+${chars ? `
+【主要人物设定（最高优先级）】
+${chars}
+` : ''}
+输出要求：
+- 只输出可直接接在正文后的连续文本；
+- 不要标题、不要说明、不要分点。
 
 已有文段（以下为正文末尾，请从此处自然续写）：
 ${text}`,
 
   rewrite: (text, req) =>
-    `你是专业的历史文学编辑。请按照以下要求对文段进行改写，直接输出改写后的内容，不加说明：
+    `任务：定向改写（保留信息、提升表达）
 
 改写要求：${req}
+
+请按以下约束执行：
+1）优先参考绑定素材/大纲/人物/编辑区上下文，若有冲突以绑定内容为准；
+2）保留原文关键信息、事件顺序与因果关系；
+3）优化表达、节奏与可读性，避免空泛修辞；
+4）只输出改写后的正文，不要解释。
 
 原文：
 ${text}`,
 
   dialogue: (chars, scene, outline) =>
-    `你是擅长历史题材的文学作家。请根据以下人物设定和场景，生成一段真实自然的人物对话（150-250字）：
-${outline ? '【故事大纲背景】\n' + outline + '\n\n' : ''}- 对话要符合各自的性格、身份和时代背景
-- 使用符合历史时代的语言风格
-- 包含适当的动作/神态描写
-- 直接输出对话内容
+    `任务：人物对话生成（贴合人设）
 
-人物设定：${chars}
-场景：${scene}`,
+请根据以下信息生成150-250字对话片段：
+${outline ? `【故事大纲（最高优先级）】
+${outline}
+` : ''}
+【人物设定（最高优先级）】
+${chars}
+
+场景：${scene}
+
+要求：
+1）对话语气、用词、行为符合人设与时代；
+2）对话需推动情节或揭示关系，不空转；
+3）可少量加入动作与神态描写增强画面；
+4）只输出可直接入文的正文。`,
 
   outline: (story) =>
-    `你是专业的历史小说策划编辑。请根据以下故事梗概，生成一份详细的分章大纲：
-- 建议分为5-8章
-- 每章包含：章节标题、核心情节、关键人物、情感基调
-- 注意历史背景的合理性
-- 情节起伏有张有弛
+    `任务：连载分章大纲生成（可执行）
 
-故事梗概：${story}`,
+请基于以下梗概与绑定上下文，输出5-8章分章大纲：
+${story}
+
+每章包含：
+- 章节标题
+- 核心事件
+- 冲突推进
+- 人物变化
+- 章节钩子
+
+硬性要求：时间线连续、人物动机自洽、每章都推进主线。
+输出要求：直接输出分章内容，不要前言。`,
 
   title: (content) =>
     `你是资深的历史题材文学编辑。请根据以下文章内容，生成5个候选标题：
@@ -1374,7 +1978,7 @@ async function callSpark(prompt, tabKey) {
   }
   
     const token = localStorage.getItem('token')
-    const payload = { prompt }
+    const payload = { prompt, systemPrompt: buildAiSystemPrompt() }
     // 过滤掉 mine_ 前缀的用户自建素材（id 非数字，后端 Long 类型无法解析）
     const validBoundMats = boundMats.value.filter(m => {
       const id = String(m.id)
@@ -1468,7 +2072,7 @@ async function callSpark(prompt, tabKey) {
       // 错误时保持 show=true 让用户看到错误信息，但停止 loading
     } else {
       aiError.value = errMsg
-      aiLoading.value = false
+    aiLoading.value = false
     }
   }
 }
@@ -1531,7 +2135,9 @@ function insertAiParagraph(para) {
   const start = el.selectionStart
   const before = editorContent.value.slice(0, start)
   const after  = editorContent.value.slice(start)
-  editorContent.value = before + '\n\n' + para + '\n\n' + after
+  const formatted = formatAiParagraphs(para)
+  editorContent.value = before + '\n\n' + formatted + '\n\n' + after
+  startAutoSave()
   insertBanner.value = '已插入段落'
   setTimeout(() => insertBanner.value = '', 2000)
 }
@@ -1542,7 +2148,9 @@ function insertAiResult() {
   const start = el.selectionStart
   const before = editorContent.value.slice(0, start)
   const after  = editorContent.value.slice(start)
-  editorContent.value = before + '\n\n' + aiResult.value + '\n\n' + after
+  const formatted = formatAiParagraphs(aiResult.value)
+  editorContent.value = before + '\n\n' + formatted + '\n\n' + after
+  startAutoSave()
   insertBanner.value = 'AI助手结果'
   setTimeout(() => insertBanner.value = '', 2000)
 }
@@ -1572,12 +2180,13 @@ onBeforeUnmount(() => {
 .editor-area { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .material-sidebar { width: 270px; flex-shrink: 0; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.25s; overflow: hidden; }
 .material-sidebar.collapsed { width: 36px; }
-.sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 0.4rem; }
+.series-badge { display: inline-block; font-size: 0.65rem; color: var(--primary); background: rgba(var(--primary-rgb), 0.1); border-radius: 4px; padding: 0.1rem 0.35rem; margin-left: 0.35rem; font-weight: 600; vertical-align: middle; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
 .collapse-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 0.1rem 0.3rem; border-radius: 4px; }
 .collapse-btn:hover { color: var(--primary); }
 .side-panel-tabs { display: flex; border-bottom: 2px solid var(--border); flex-shrink: 0; background: var(--bg-sidebar); }
-.side-panel-tabs button { flex: 1; padding: 0.55rem 0.25rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+.side-panel-tabs button { flex: 1; padding: 0.45rem 0.2rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.72rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
 .side-panel-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); background: var(--bg-hover); }
 .side-panel-tabs button:hover:not(.active) { color: var(--text-main); background: var(--bg-hover); }
 
@@ -1631,6 +2240,61 @@ onBeforeUnmount(() => {
 
 /* 大纲统计栏 */
 .outline-stats { padding: 0.4rem 0.75rem; font-size: 0.72rem; color: var(--text-muted); border-top: 1px solid var(--border); text-align: center; flex-shrink: 0; }
+.char-card { border-left: 3px solid var(--primary); }
+.char-card-name { font-weight: 700; font-size: 0.85rem; color: var(--text-main); }
+.char-card-identity { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.4rem; }
+
+/* ── 人物卡弹窗 ── */
+.char-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.char-modal-dialog { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: min(660px, 92vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgba(0,0,0,0.4); overflow: hidden; }
+.char-modal-hd { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.char-modal-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 700; color: var(--text-main); }
+.char-modal-icon { font-size: 1.1rem; }
+.char-modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 4px; transition: color 0.15s; }
+.char-modal-close:hover { color: var(--text-main); }
+.char-modal-body { flex: 1; overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+.char-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+.char-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.char-field-full { display: flex; flex-direction: column; gap: 0.3rem; }
+.char-label { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); letter-spacing: 0.03em; }
+.char-required { color: #e05252; }
+.char-input { background: var(--bg-main); border: 1px solid var(--border); border-radius: 7px; padding: 0.45rem 0.65rem; font-size: 0.82rem; color: var(--text-main); outline: none; transition: border-color 0.15s; width: 100%; box-sizing: border-box; }
+.char-input:focus { border-color: var(--primary); }
+.char-select { cursor: pointer; }
+.char-textarea { background: var(--bg-main); border: 1px solid var(--border); border-radius: 7px; padding: 0.45rem 0.65rem; font-size: 0.82rem; color: var(--text-main); outline: none; resize: vertical; min-height: 72px; width: 100%; box-sizing: border-box; font-family: inherit; line-height: 1.6; transition: border-color 0.15s; }
+.char-textarea:focus { border-color: var(--primary); }
+.char-modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; padding: 0.9rem 1.25rem; border-top: 1px solid var(--border); flex-shrink: 0; background: var(--bg-card); }
+.char-btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 7px; padding: 0.45rem 1.1rem; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+.char-btn-cancel:hover { border-color: var(--text-muted); color: var(--text-main); }
+.char-btn-save { background: var(--primary); border: none; color: #fff; border-radius: 7px; padding: 0.45rem 1.4rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+.char-btn-save:hover { opacity: 0.88; }
+
+/* ── 世界观面板 ── */
+.world-panel { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
+.world-module { border-bottom: 1px solid var(--border); }
+.world-module-hd { display: flex; align-items: center; gap: 0.4rem; padding: 0.6rem 0.75rem; cursor: pointer; user-select: none; transition: background 0.15s; }
+.world-module-hd:hover { background: rgba(var(--primary-rgb), 0.06); }
+.world-module-icon { font-size: 0.9rem; }
+.world-module-title { flex: 1; font-size: 0.78rem; font-weight: 600; color: var(--text-main); }
+.world-module-arrow { font-size: 0.7rem; color: var(--text-muted); }
+.world-module-body { padding: 0 0.75rem 0.75rem; }
+.world-textarea { width: 100%; box-sizing: border-box; background: var(--bg-main); border: 1px solid var(--border); border-radius: 7px; padding: 0.5rem 0.65rem; font-size: 0.78rem; color: var(--text-main); resize: vertical; min-height: 90px; font-family: inherit; line-height: 1.65; outline: none; transition: border-color 0.15s; }
+.world-textarea:focus { border-color: var(--primary); }
+.world-expand-enter-active, .world-expand-leave-active { transition: max-height 0.22s ease, opacity 0.18s; overflow: hidden; }
+.world-expand-enter-from, .world-expand-leave-to { max-height: 0; opacity: 0; }
+.world-expand-enter-to, .world-expand-leave-from { max-height: 400px; opacity: 1; }
+.world-footer { padding: 0.45rem 0.75rem; border-top: 1px solid var(--border); text-align: center; flex-shrink: 0; }
+.world-bound-hint { font-size: 0.72rem; color: var(--primary); font-weight: 600; }
+.world-unbound-hint { font-size: 0.72rem; color: var(--text-muted); }
+
+/* ── 伏笔面板 ── */
+.hooks-filter-row { display: flex; gap: 0.4rem; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border); }
+.hook-card .hook-title { font-weight: 700; font-size: 0.78rem; color: var(--text-main); }
+.hook-card .hook-from { margin-left: auto; font-size: 0.68rem; color: var(--text-muted); }
+.hook-status { font-size: 0.68rem; padding: 0.12rem 0.38rem; border-radius: 999px; font-weight: 600; }
+.hook-status.open { color: #c26b00; background: rgba(194, 107, 0, 0.12); }
+.hook-status.resolved { color: #2c7a3f; background: rgba(44, 122, 63, 0.12); }
+.hook-resolve-ch { font-size: 0.68rem; color: var(--text-muted); margin-left: 0.5rem; }
 
 .source-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .source-tabs button { flex: 1; padding: 0.5rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.2s; }
@@ -1659,7 +2323,7 @@ onBeforeUnmount(() => {
 
 /* 编辑区 */
 .editor-area { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-.editor-toolbar { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-card); flex-shrink: 0; }
+.editor-toolbar { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-card); flex-shrink: 0; }
 .btn-back { padding: 0.35rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); font-size: 0.85rem; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
 .btn-back:hover { border-color: var(--primary); color: var(--primary); }
 .doc-title-input { flex: 1; padding: 0.5rem 0.85rem; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 1.05rem; font-weight: 600; font-family: inherit; transition: border-color 0.2s; }
@@ -1681,7 +2345,7 @@ onBeforeUnmount(() => {
 .banner-close { background: transparent; border: none; color: var(--primary); cursor: pointer; font-size: 1rem; }
 
 /* 自动保存进度条 */
-.autosave-bar { position: relative; height: 24px; background: var(--bg-input); border-bottom: 1px solid var(--border); display: flex; align-items: center; flex-shrink: 0; overflow: hidden; transition: opacity 0.3s; }
+.autosave-bar { position: relative; height: 20px; background: var(--bg-input); border-bottom: 1px solid var(--border); display: flex; align-items: center; flex-shrink: 0; overflow: hidden; transition: opacity 0.3s; }
 .autosave-bar.idle { opacity: 0; pointer-events: none; }
 .autosave-bar.counting { opacity: 1; }
 .autosave-bar.saving { opacity: 1; }
@@ -1693,7 +2357,8 @@ onBeforeUnmount(() => {
 .autosave-hint { position: relative; z-index: 1; padding: 0 1rem; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 .autosave-bar.saved .autosave-hint { color: #43a047; font-weight: 600; }
 .autosave-bar.saving .autosave-hint { color: var(--primary); }
-.rich-toolbar { display: flex; align-items: center; gap: 0.25rem; padding: 0.4rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-input); flex-shrink: 0; flex-wrap: wrap; }
+.rich-toolbar-wrap { border-bottom: 1px solid var(--border); background: var(--bg-input); }
+.rich-toolbar { display: flex; align-items: center; gap: 0.25rem; padding: 0.35rem 1rem; background: var(--bg-input); flex-shrink: 0; flex-wrap: wrap; }
 .rich-btn { padding: 0.25rem 0.6rem; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-sub); font-size: 0.85rem; cursor: pointer; transition: all 0.2s; min-width: 28px; }
 .rich-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-hover); }
 .rich-btn:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -1706,7 +2371,7 @@ onBeforeUnmount(() => {
 .rich-select:focus { outline: none; border-color: var(--primary); }
 .editor-textarea {
   flex: 1; resize: none; border: none; border-radius: 0;
-  padding: 3.5rem 12% 4rem;
+  padding: 0.8rem 4% 2rem;
   background: var(--bg-editor, var(--bg-card));
   color: var(--text-main);
   font-family: 'Noto Serif SC', 'SimSun', 'STSong', Georgia, serif;
@@ -1874,7 +2539,21 @@ onBeforeUnmount(() => {
 .inline-ai-enter { animation: slideUp 0.3s ease; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 .inline-ai-leave-active { animation: slideDown 0.2s ease; }
-@keyframes slideDown { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(20px); } }
+@keyframes slideDown { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(20px); } }.editor-word-count {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.8rem;
+  z-index: 15;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  user-select: none;
+  pointer-events: none;
+}
+
 .sel-toolbar-close {
   font-size: 0.68rem; padding: 0.25rem 0.4rem;
   background: transparent; color: rgba(255,255,255,0.35);
@@ -1901,19 +2580,19 @@ onBeforeUnmount(() => {
   background: var(--bg-editor, var(--bg-card)) !important;
 }
 .focus-mode .editor-textarea {
-  padding: 4rem 18% 6rem !important;
+  padding: 1rem 8% 2.2rem !important;
   font-size: 1.1rem !important;
   line-height: 2.4 !important;
   background: var(--bg-editor, var(--bg-card)) !important;
 }
 .focus-mode .editor-toolbar {
-  padding: 0.5rem 18% !important;
+  padding: 0.45rem 8% !important;
   background: var(--bg-editor, var(--bg-card)) !important;
   border-bottom-color: transparent !important;
 }
 .focus-mode .rich-toolbar {
   justify-content: center !important;
-  padding: 0.35rem 18% !important;
+  padding: 0.3rem 8% !important;
   background: var(--bg-editor, var(--bg-card)) !important;
   border-bottom-color: transparent !important;
 }

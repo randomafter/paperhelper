@@ -65,7 +65,8 @@ public class CreationWorkService {
     /** 保存/更新作品内容（明确更新updatedAt） */
     @Transactional
     public CreationWorkDTO save(Long userId, Long id, String title, String content,
-                                String pinnedOutline, String charProfiles, String outlineData) {
+                                String pinnedOutline, String charProfiles, String outlineData,
+                                String charProfilesJson, String worldSetting, String plotHooks) {
         if (id == null) {
             return create(userId, title, content, null);
         }
@@ -78,6 +79,9 @@ public class CreationWorkService {
         if (pinnedOutline != null) work.setPinnedOutline(pinnedOutline);
         if (charProfiles != null) work.setCharProfiles(charProfiles);
         if (outlineData != null) work.setOutlineData(outlineData);
+        if (charProfilesJson != null) work.setCharProfilesJson(charProfilesJson);
+        if (worldSetting != null) work.setWorldSetting(worldSetting);
+        if (plotHooks != null) work.setPlotHooks(plotHooks);
         work.setUpdatedAt(LocalDateTime.now());
         workMapper.updateById(work);
         return toDTO(work);
@@ -115,6 +119,9 @@ public class CreationWorkService {
         dto.setPinnedOutline(work.getPinnedOutline());
         dto.setCharProfiles(work.getCharProfiles());
         dto.setOutlineData(work.getOutlineData());
+        dto.setCharProfilesJson(work.getCharProfilesJson());
+        dto.setWorldSetting(work.getWorldSetting());
+        dto.setPlotHooks(work.getPlotHooks());
         dto.setLastOpenedAt(work.getLastOpenedAt());
         dto.setCreatedAt(work.getCreatedAt());
         dto.setUpdatedAt(work.getUpdatedAt());

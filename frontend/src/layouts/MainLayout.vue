@@ -1,29 +1,24 @@
 <template>
   <div class="layout">
-    <header class="header" :class="{ collapsed: headerCollapsed }">
+    <header v-if="!isWorkspace" class="header">
       <div class="header-inner">
         <div class="header-left">
           <router-link to="/" class="logo">
-            <span class="logo-icon">✨</span>
-            <span class="logo-text">历史特色创作</span>
+            <span class="logo-text">历史创作台</span>
           </router-link>
         </div>
         <div class="header-right">
           <div class="user-info">
             <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
-            <span class="role-badge" :class="{ admin: isAdmin }">{{ isAdmin ? '👑 管理员' : '✨ 创作者' }}</span>
+            <span class="role-badge" :class="{ admin: isAdmin }">{{ isAdmin ? '管理员' : '创作者' }}</span>
           </div>
           <button class="logout-btn" @click="logout">退出登录</button>
         </div>
       </div>
-      <!-- 收起/展开按钮 -->
-      <button class="header-toggle" @click="toggleHeader" :title="headerCollapsed ? '展开导航栏' : '收起导航栏'">
-        {{ headerCollapsed ? '▾' : '▴' }}
-      </button>
     </header>
 
-    <div class="container" :style="{ marginTop: headerCollapsed ? '18px' : '60px' }">
-      <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }" :style="{ height: 'calc(100vh - ' + (headerCollapsed ? 18 : 60) + 'px)' }">
+    <div class="container" :style="{ marginTop: isWorkspace ? '0' : '56px' }">
+      <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }" :style="{ height: 'calc(100vh - ' + (isWorkspace ? 0 : 56) + 'px)' }">
         <button class="sidebar-toggle" @click="toggleSidebar" :title="sidebarCollapsed ? '展开菜单' : '收起菜单'">
           {{ sidebarCollapsed ? '›' : '‹' }}
         </button>
@@ -78,7 +73,7 @@
         </nav>
       </aside>
 
-      <main class="main-content" :style="{ height: 'calc(100vh - ' + (headerCollapsed ? 18 : 60) + 'px)' }">
+      <main class="main-content" :style="{ height: 'calc(100vh - ' + (isWorkspace ? 0 : 56) + 'px)' }">
         <router-view />
       </main>
     </div>
@@ -95,19 +90,14 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'ADMIN')
+const isWorkspace = computed(() => route.path === '/workspace')
 const unreadCount = ref(0)
 const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true')
-const headerCollapsed = ref(localStorage.getItem('header_collapsed') === 'true')
 let pollTimer = null
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   localStorage.setItem('sidebar_collapsed', sidebarCollapsed.value)
-}
-
-function toggleHeader() {
-  headerCollapsed.value = !headerCollapsed.value
-  localStorage.setItem('header_collapsed', headerCollapsed.value)
 }
 
 async function fetchUnread() {
@@ -148,58 +138,18 @@ onBeforeUnmount(() => {
   right: 0;
   z-index: 100;
   background: var(--bg-header);
-  border-bottom: 2px solid var(--primary);
-  box-shadow: 0 2px 12px var(--shadow);
-  overflow: hidden;
-  transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
-  height: 60px;
-}
-
-.header.collapsed {
-  height: 18px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 10px var(--shadow);
+  height: 56px;
 }
 
 .header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2rem;
-  height: 60px;
+  padding: 0 1rem;
+  height: 56px;
   flex-shrink: 0;
-}
-
-/* 收起/展开箭头按钮 */
-.header-toggle {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 48px;
-  height: 14px;
-  background: var(--bg-header);
-  border: 1px solid var(--border);
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 0.6rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s, background 0.2s;
-  z-index: 101;
-}
-.header.collapsed .header-toggle {
-  bottom: auto;
-  top: 0;
-  height: 18px;
-  border-radius: 0 0 8px 8px;
-  border-top: none;
-}
-.header-toggle:hover {
-  color: var(--primary);
-  background: var(--bg-hover);
 }
 
 .logo {
@@ -208,24 +158,13 @@ onBeforeUnmount(() => {
   gap: 0.6rem;
   text-decoration: none;
   font-weight: 700;
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: var(--text-main);
   transition: opacity 0.2s;
 }
-.logo:hover { opacity: 0.8; }
-.logo-icon {
-  font-size: 1.4rem;
-  animation: float 3s ease-in-out infinite;
-}
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
+.logo:hover { opacity: 0.82; }
 .logo-text {
-  background: linear-gradient(90deg, var(--primary), var(--primary-light));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-main);
 }
 
 .header-right {

@@ -6,6 +6,7 @@
         <button class="chat-hdr-btn" @click="showCtx = !showCtx" :class="{ active: showCtx }" title="上下文配置">⚙</button>
         <button class="chat-hdr-btn" @click="newSession" title="新对话">＋</button>
         <button class="chat-hdr-btn" @click="showHistory = !showHistory" :class="{ active: showHistory }" title="历史会话">🕒</button>
+        <button class="chat-hdr-btn chat-hdr-btn-collapse" @click="emit('collapse')" title="隐藏面板">›</button>
       </div>
     </div>
 
@@ -19,6 +20,9 @@
       </span>
       <span :class="['ctx-tag', chars ? 'ctx-tag--on' : 'ctx-tag--off']">
         👤 {{ chars ? '人物已设' : '无人物' }}
+      </span>
+      <span :class="['ctx-tag', plotHooks ? 'ctx-tag--on' : 'ctx-tag--off']">
+        🧷 {{ plotHooks ? '伏笔已设' : '无伏笔' }}
       </span>
       <span :class="['ctx-tag', editorContent?.trim() ? 'ctx-tag--on' : 'ctx-tag--off']">
         📝 {{ editorContent?.trim() ? '编辑区有内容' : '编辑区为空' }}
@@ -57,14 +61,16 @@
         <textarea :value="outline" @input="emit('update:outline', $event.target.value)"
           class="ctx-textarea" rows="3" placeholder="粘贴大纲，AI 续写时将严格遵循..."></textarea>
       </div>
-      <!-- 人物 -->
+      <!-- 复核规则 -->
       <div class="ctx-row">
-        <div class="ctx-label-row">
-          <span class="ctx-label">👤 人物</span>
-          <button v-if="chars" class="ctx-clear-btn" @click="emit('update:chars', '')">清除</button>
+        <span class="ctx-label">🧪 复核</span>
+        <div class="repair-rules">
+          <label class="repair-rule"><input type="checkbox" v-model="repairRules.outline" /> 大纲一致</label>
+          <label class="repair-rule"><input type="checkbox" v-model="repairRules.chars" /> 人设一致</label>
+          <label class="repair-rule"><input type="checkbox" v-model="repairRules.timeline" /> 时间线连续</label>
+          <label class="repair-rule"><input type="checkbox" v-model="repairRules.historyDetail" /> 历史细节</label>
+          <label class="repair-rule"><input type="checkbox" v-model="repairRules.dualWhenConflict" /> 严重冲突双方案</label>
         </div>
-        <textarea :value="chars" @input="emit('update:chars', $event.target.value)"
-          class="ctx-textarea" rows="2" placeholder="人物设定，如：李明远，寒门举子..."></textarea>
       </div>
     </div>
 
@@ -75,9 +81,7 @@
         <div class="welcome-desc">直接描述你的需求，我会参考绑定的素材、大纲和编辑区内容来回答。</div>
         <div class="welcome-hints">
           <span @click="input = '请根据大纲续写下一段'" class="hint-tag">续写下一段</span>
-          <span @click="input = '润色最后一段，语言更典雅'" class="hint-tag">润色最后一段</span>
           <span @click="input = '根据素材生成一段历史场景'" class="hint-tag">生成场景</span>
-          <span @click="input = '检查是否有历史错误'" class="hint-tag">检查错误</span>
         </div>
       </div>
       <template v-for="msg in messages" :key="msg.id">
@@ -93,10 +97,14 @@
               <button @click="copy(msg)" class="act-btn">📋</button>
               <button @click="retry(msg)" class="act-btn">↺</button>
             </div>
+            <div v-if="!msg.streaming && msg.repairOptions?.length" class="repair-options">
+              <span class="repair-options-hd">检测到潜在冲突，选择修正版：</span>
+              <button v-for="(opt, idx) in msg.repairOptions" :key="idx" class="act-btn" @click="useRepairOption(msg, idx)">方案{{ idx + 1 }}</button>
+            </div>
           </div>
         </div>
       </template>
-      <div v-if="loading" class="msg msg-ai">
+      <div v-if="loading && !messages.some(m => m.streaming)" class="msg msg-ai">
         <div class="bubble bubble-ai loading">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
         </div>
@@ -118,22 +126,41 @@
       </div>
       <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
     </div>
+
+    <div v-if="showKickoff" class="kickoff-mask" @click.self="showKickoff = false">
+      <div class="kickoff-dialog">
+        <div class="kickoff-hd">🚀 5问立项</div>
+        <div class="kickoff-grid">
+          <label>题材风格<input v-model="kickoffForm.genre" class="kickoff-input" placeholder="如：历史权谋+群像" /></label>
+          <label>主角结构<input v-model="kickoffForm.protagonist" class="kickoff-input" placeholder="如：双主角" /></label>
+          <label>核心性格<input v-model="kickoffForm.coreTrait" class="kickoff-input" placeholder="如：克制、冷静" /></label>
+          <label>核心冲突<input v-model="kickoffForm.coreConflict" class="kickoff-input" placeholder="如：家国与私情" /></label>
+          <label>章节规模<input v-model="kickoffForm.chapterScale" class="kickoff-input" placeholder="如：120章，每章3500字" /></label>
+        </div>
+        <div class="kickoff-actions">
+          <button class="quick-btn" @click="showKickoff = false">取消</button>
+          <button class="send-btn" @click="applyKickoff">生成立项提示词</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 
 const props = defineProps({
   boundMats: { type: Array, default: () => [] },
   outline: { type: String, default: '' },
   chars: { type: String, default: '' },
+  worldSetting: { type: String, default: '' },
+  plotHooks: { type: String, default: '' },
   editorContent: { type: String, default: '' },
   styleName: { type: String, default: '典雅' },
   words: { type: Number, default: 200 },
 })
 
-const emit = defineEmits(['update:outline', 'update:chars', 'accept-msg', 'update:boundMats'])
+const emit = defineEmits(['update:outline', 'update:chars', 'accept-msg', 'update:boundMats', 'collapse'])
 
 const messages = ref([])
 const input = ref('')
@@ -144,21 +171,60 @@ const sessions = ref(JSON.parse(localStorage.getItem('chat_sessions') || '[]'))
 const currentId = ref(null)
 const messagesRef = ref(null)
 const inputRef = ref(null)
+const pendingDisplayText = ref('')
+const showKickoff = ref(false)
+const kickoffForm = ref({
+  genre: '',
+  protagonist: '',
+  coreTrait: '',
+  coreConflict: '',
+  chapterScale: ''
+})
+
+const defaultRepairRules = {
+  outline: false,
+  chars: false,
+  timeline: false,
+  historyDetail: false,
+  dualWhenConflict: false,
+}
+const savedRepairRules = JSON.parse(localStorage.getItem('ai_repair_rules') || 'null')
+const repairRules = ref({ ...defaultRepairRules, ...(savedRepairRules || {}) })
 
 const quickCmds = [
   { key: 'continue', icon: '➡️', label: '续写' },
-  { key: 'polish',   icon: '✨', label: '润色' },
-  { key: 'outline',  icon: '📋', label: '大纲' },
-  { key: 'check',    icon: '⚠️', label: '检错' },
+  { key: 'generate', icon: '🪄', label: '生成' },
   { key: 'scene',    icon: '✍️', label: '场景' },
+  { key: 'kickoff',  icon: '🚀', label: '5问立项' },
 ]
 
 function buildSystemPrompt() {
-  let sys = ''
-  if (props.outline?.trim()) sys += `【故事大纲（必须遵循）】\n${props.outline.trim()}\n\n`
-  if (props.chars?.trim()) sys += `【人物设定】\n${props.chars.trim()}\n\n`
-  const tail = props.editorContent?.trim().slice(-600)
-  if (tail) sys += `【编辑区末尾内容（供续写/润色参考）】\n${tail}\n\n`
+  const hasOutline = !!props.outline?.trim()
+  const hasChars = !!props.chars?.trim()
+  const tail = props.editorContent?.trim().slice(-600) || ''
+  const mats = (props.boundMats || []).slice(0, 5)
+
+  let sys = `你是历史小说创作助手。回答时必须优先使用用户绑定上下文：素材、大纲、人物设定、编辑区内容。
+若绑定上下文与常识冲突，以绑定上下文为准。
+仅当绑定信息不足时，才做最小必要补全。
+最终回复只输出可直接使用的正文内容，不要解释、不要前言、不要题外话。
+输出请使用自然分段，段间空一行；每段首行使用两个全角空格缩进。
+\n`
+
+  if (mats.length) {
+    sys += '【绑定素材（最高优先级）】\n'
+    mats.forEach((m, i) => {
+      const title = m?.title || `素材${i + 1}`
+      const content = (m?.content || '').slice(0, 500)
+      sys += `${i + 1}. ${title}\n${content}\n\n`
+    })
+  }
+  if (hasOutline) sys += `【故事大纲（最高优先级）】\n${props.outline.trim()}\n\n`
+  if (hasChars) sys += `【人物设定（最高优先级）】\n${props.chars.trim()}\n\n`
+  if (props.worldSetting?.trim()) sys += `【世界观/设定（最高优先级）】\n${props.worldSetting.trim()}\n\n`
+  if (props.plotHooks?.trim()) sys += `【未回收伏笔（必须优先呼应）】\n${props.plotHooks.trim()}\n\n`
+  if (tail) sys += `【编辑区末尾内容（最高优先级上下文）】\n${tail}\n\n`
+
   return sys
 }
 
@@ -167,19 +233,124 @@ function scroll() {
   if (el) el.scrollTop = el.scrollHeight
 }
 
-async function send() {
-  const text = input.value.trim()
+async function runConsistencyRepair(draft, userDemand, validIds) {
+  const content = (draft || '').trim()
+  if (!content) return { content: draft, options: [] }
+
+  const enabled = []
+  if (repairRules.value.outline) enabled.push('大纲一致')
+  if (repairRules.value.chars) enabled.push('人物一致')
+  if (repairRules.value.timeline) enabled.push('时间线连续')
+  if (repairRules.value.historyDetail) enabled.push('历史细节准确')
+  const checkScope = enabled.length ? enabled.join('、') : '基础一致性'
+
+  const hasCtx = props.boundMats.length > 0 || !!props.outline?.trim() || !!props.chars?.trim() || !!props.editorContent?.trim()
+  if (!hasCtx) return { content: draft, options: [] }
+
+  const token = localStorage.getItem('token')
+  const dualMode = repairRules.value.dualWhenConflict
+  const reviewPrompt = dualMode
+    ? `任务：一致性复核与修正（冲突时给双方案）\n\n请按以下范围复核候选正文：${checkScope}。\n要求：\n1）优先遵循绑定上下文；\n2）保持用户原始意图；\n3）若无明显冲突，直接输出最终正文；\n4）若存在明显冲突，按如下格式输出两种修正版（只输出正文，不要解释）：\n===方案1===\n（严格遵循绑定上下文）\n===方案2===\n（尽量保留原候选表达但修正关键冲突）\n\n用户需求：${userDemand}\n\n候选正文：\n${content}`
+    : `任务：一致性复核与最小修正\n\n请按以下范围复核候选正文：${checkScope}。\n要求：\n1）若与绑定上下文冲突，做最小必要修正；\n2）保持用户原始意图不变；\n3）保持文风连续；\n4）只输出修正后的最终正文，不要解释。\n\n用户需求：${userDemand}\n\n候选正文：\n${content}`
+
+  const response = await fetch('/api/spark/stream/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      systemPrompt: buildSystemPrompt(),
+      messages: [{ role: 'user', content: reviewPrompt }],
+      materialIds: validIds.length > 0 ? validIds : undefined
+    })
+  })
+
+  if (!response.ok || !response.body) return { content: draft, options: [] }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let fixed = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data:')) continue
+      const data = trimmed.slice(5).trim()
+      if (data === '[DONE]') {
+        const all = fixed.trim() || draft
+        const options = all.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
+        if (options.length > 1) return { content: options[0], options }
+        return { content: all, options: [] }
+      }
+      fixed += data
+    }
+  }
+
+  const all = fixed.trim() || draft
+  const options = all.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
+  if (options.length > 1) return { content: options[0], options }
+  return { content: all, options: [] }
+}
+
+function cleanAssistantText(text) {
+  let t = String(text || '')
+  t = t.replace(/^\s*(每段首行请使用两个全角空格缩进\.?|两个全角空格[：:，,。]?)/, '')
+  return t.trimStart()
+}
+
+function formatNovelParagraphs(text) {
+  const raw = cleanAssistantText(text)
+  let parts = raw.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
+
+  if (parts.length <= 1) {
+    const compact = raw.replace(/\n+/g, '').trim()
+    if (compact) {
+      const segs = compact.split(/(?<=[。！？!?])/).map(s => s.trim()).filter(Boolean)
+      const rebuilt = []
+      let acc = ''
+      for (const s of segs) {
+        if ((acc + s).length > 120 && acc) {
+          rebuilt.push(acc)
+          acc = s
+        } else {
+          acc += s
+        }
+      }
+      if (acc) rebuilt.push(acc)
+      if (rebuilt.length > 1) parts = rebuilt
+      else parts = [compact]
+    }
+  }
+
+  if (!parts.length) return ''
+  const normalized = parts.map(p => {
+    const body = p.replace(/^[\u3000\s]+/, '')
+    return `　　${body}`
+  })
+  return normalized.join('\n\n')
+}
+
+async function send(payload = '') {
+  const text = typeof payload === 'string' ? (payload || input.value).trim() : input.value.trim()
   if (!text || loading.value) return
   input.value = ''
   if (!currentId.value) currentId.value = Date.now()
 
-  messages.value.push({ id: Date.now(), role: 'user', content: text })
+  const shown = (pendingDisplayText.value || text).trim()
+  pendingDisplayText.value = ''
+  const userMsg = { id: Date.now(), role: 'user', content: shown }
+  if (shown !== text) userMsg._prompt = text
+  messages.value.push(userMsg)
   await nextTick(); scroll()
 
   loading.value = true
   const history = messages.value
     .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({ role: m.role, content: m.content }))
+    .map(m => ({ role: m.role, content: m._prompt || m.content }))
 
   const aiMsg = { id: Date.now() + 1, role: 'assistant', content: '', streaming: true }
   messages.value.push(aiMsg)
@@ -190,6 +361,9 @@ async function send() {
     .filter(m => /^\d+$/.test(String(m.id)))
     .map(m => Number(m.id))
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120000)
+
   try {
     const response = await fetch('/api/spark/stream/chat', {
       method: 'POST',
@@ -198,53 +372,93 @@ async function send() {
         systemPrompt: buildSystemPrompt(),
         messages: history,
         materialIds: validIds.length > 0 ? validIds : undefined
-      })
+      }),
+      signal: controller.signal,
     })
 
-    if (!response.ok) {
+    if (!response.ok || !response.body) {
       const err = await response.json().catch(() => ({}))
       aiMsg.content = err?.message || '请求失败，请稍后重试'
-      aiMsg.streaming = false; loading.value = false; return
+      return
     }
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
+    let doneReceived = false
 
-    while (true) {
+    while (!doneReceived) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n'); buffer = lines.pop() ?? ''
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
       for (const line of lines) {
         const trimmed = line.trim()
         if (!trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
         if (data === '[DONE]') {
-          aiMsg.streaming = false; loading.value = false
-          saveSession(); await nextTick(); scroll(); return
+          doneReceived = true
+          break
         }
         aiMsg.content += data
-        await nextTick(); scroll()
       }
+      await nextTick(); scroll()
     }
-    aiMsg.streaming = false; loading.value = false; saveSession()
+
+    try {
+      const repaired = await runConsistencyRepair(aiMsg.content, text, validIds)
+      aiMsg.content = formatNovelParagraphs(repaired.content)
+      if (repaired.options?.length > 1) aiMsg.repairOptions = repaired.options.map(formatNovelParagraphs)
+    } catch (_) {
+      aiMsg.content = formatNovelParagraphs(aiMsg.content)
+    }
+
+    saveSession()
+    await nextTick(); scroll()
   } catch (e) {
-    aiMsg.content = !navigator.onLine ? '📡 网络已断开' : '⚠️ 服务暂时不可用'
-    aiMsg.streaming = false; loading.value = false
+    aiMsg.content = e.name === 'AbortError'
+      ? '⏱️ 生成超时，请重试'
+      : (!navigator.onLine ? '📡 网络已断开' : '⚠️ 服务暂时不可用')
+  } finally {
+    clearTimeout(timeout)
+    aiMsg.streaming = false
+    loading.value = false
   }
 }
 
 function quickCmd(cmd) {
-  const map = {
-    continue: `请根据大纲和编辑区末尾内容，以${props.styleName}风格续写约${props.words}字，末尾标注参考章节。`,
-    polish:   '请润色编辑区最后一段，保持原意，提升文学性，直接返回润色后文本。',
-    outline:  '请根据故事梗概和素材，生成完整分章大纲（5-8章），每章含标题、核心情节、关键人物。',
-    check:    '请检查编辑区末尾内容中的历史错误（食材、器物、词汇、制度等），按【错误点N】格式列出。',
-    scene:    `请生成一段150-250字的历史场景描写，风格${props.styleName}，历史细节准确，调动多种感官。`,
+  if (cmd.key === 'kickoff') {
+    showKickoff.value = true
+    return
   }
-  input.value = map[cmd.key] || ''
-  inputRef.value?.focus()
+
+  const map = {
+    continue: {
+      display: '请续写下一段',
+      prompt: `任务：长篇小说续写（高约束）\n\n请严格依据已绑定素材、大纲、人物、世界观、伏笔与编辑区末尾上下文续写。\n要求：\n1）保持同一人称/时态/语气；\n2）推进当前冲突，不跳时间线；\n3）不新增重大设定；\n4）生成长度约${props.words}字，风格偏${props.styleName}；\n5）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n6）仅输出可直接接在正文后的连续文本。`
+    },
+    generate: {
+      display: '请生成剧情',
+      prompt: `任务：小说剧情生成（高约束）\n\n请基于当前已绑定上下文（素材、大纲、人物、世界观、伏笔）生成一段可直接入文的剧情正文。\n要求：\n1）优先呼应未回收伏笔并推动主线；\n2）人物行为符合人设与动机；\n3）历史细节与世界观一致；\n4）生成长度900-1100字；\n5）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n6）只输出正文，不要标题、不要说明。`
+    },
+    scene: {
+      display: '请生成历史场景',
+      prompt: `任务：场景生成（可直接入文）\n\n请基于已绑定素材和世界观，生成一段150-250字历史场景：\n- 风格：${props.styleName}\n- 至少包含两种感官描写\n- 细节符合时代背景\n- 末句保留叙事张力\n\n只输出场景正文。`
+    },
+  }
+  const payload = map[cmd.key]
+  if (!payload) return
+  pendingDisplayText.value = payload.display
+  send(payload.prompt)
+}
+
+async function applyKickoff() {
+  const f = kickoffForm.value
+  const prompt = `请基于以下5问立项信息，直接输出：1）故事总纲；2）8章分章大纲；3）核心人物档案；4）时间线初稿；5）伏笔清单初稿。\n\n题材风格：${f.genre || '未提供'}\n主角结构：${f.protagonist || '未提供'}\n核心性格：${f.coreTrait || '未提供'}\n核心冲突：${f.coreConflict || '未提供'}\n章节规模：${f.chapterScale || '未提供'}\n\n输出要求：只输出可直接使用内容，不要解释。`
+  showKickoff.value = false
+  pendingDisplayText.value = '请生成立项方案'
+  await send(prompt)
 }
 
 function accept(msg, mode) {
@@ -261,8 +475,15 @@ function retry(msg) {
   const prevUser = [...messages.value].slice(0, idx).reverse().find(m => m.role === 'user')
   if (!prevUser) return
   messages.value.splice(idx, 1)
-  input.value = prevUser.content
-  send()
+  pendingDisplayText.value = ''
+  send(prevUser._prompt || prevUser.content)
+}
+
+function useRepairOption(msg, idx) {
+  const options = msg?.repairOptions || []
+  const picked = options[idx]
+  if (!picked) return
+  msg.content = picked
 }
 
 function newSession() {
@@ -306,77 +527,95 @@ function deleteSession(id) {
 function removeMat(id) {
   emit('update:boundMats', props.boundMats.filter(m => m.id !== id))
 }
+
+watch(repairRules, (val) => {
+  localStorage.setItem('ai_repair_rules', JSON.stringify(val))
+}, { deep: true })
 </script>
 
 <style scoped>
-.ai-chat-panel { display: flex; flex-direction: column; height: 100%; background: #fff; }
-.ctx-statusbar { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.4rem 0.8rem; background: #f7f7fb; border-bottom: 1px solid #ebebf5; cursor: pointer; transition: background 0.15s; }
-.ctx-statusbar:hover { background: #f0f0fa; }
+.ai-chat-panel { display: flex; flex-direction: column; height: 100%; background: var(--bg-card); color: var(--text-main); }
+.ctx-statusbar { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.4rem 0.8rem; background: var(--bg-input); border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+.ctx-statusbar:hover { background: var(--bg-hover); }
 .ctx-tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 8px; font-weight: 500; }
-.ctx-tag--on { background: rgba(124,106,247,0.12); color: #7c6af7; }
-.ctx-tag--off { background: #f0f0f0; color: #bbb; }
+.ctx-tag--on { background: rgba(var(--primary-rgb), 0.12); color: var(--primary); }
+.ctx-tag--off { background: var(--bg-hover); color: var(--text-muted); }
 .ctx-label-row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .ctx-chip-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctx-chip-del { background: none; border: none; color: #7c6af7; cursor: pointer; font-size: 0.65rem; padding: 0 0 0 0.2rem; opacity: 0.7; }
+.ctx-chip-del { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.65rem; padding: 0 0 0 0.2rem; opacity: 0.75; }
 .ctx-chip-del:hover { opacity: 1; color: #e53935; }
-.ctx-clear-btn { background: none; border: 1px solid #ddd; border-radius: 6px; color: #aaa; font-size: 0.68rem; padding: 0.1rem 0.4rem; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.15s; }
+.ctx-clear-btn { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-size: 0.68rem; padding: 0.1rem 0.4rem; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.15s; }
 .ctx-clear-btn:hover { border-color: #e53935; color: #e53935; }
-.chat-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.8rem; border-bottom: 1px solid #e0e0e0; background: linear-gradient(135deg, #7c6af7 0%, #6c5ce7 100%); color: #fff; }
+.chat-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; }
 .chat-title { font-weight: 600; font-size: 0.95rem; }
 .chat-header-actions { display: flex; gap: 0.3rem; }
 .chat-hdr-btn { background: rgba(255,255,255,0.2); border: none; color: #fff; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
 .chat-hdr-btn:hover, .chat-hdr-btn.active { background: rgba(255,255,255,0.35); }
-.chat-history { background: #f9f9f9; border-bottom: 1px solid #e0e0e0; padding: 0.5rem; max-height: 180px; overflow-y: auto; }
-.chat-history-hd { font-size: 0.75rem; font-weight: 600; color: #888; margin-bottom: 0.3rem; }
-.chat-history-empty { font-size: 0.75rem; color: #bbb; text-align: center; padding: 0.5rem; }
+.chat-hdr-btn-collapse { font-weight: 700; }
+.chat-history { background: var(--bg-input); border-bottom: 1px solid var(--border); padding: 0.5rem; max-height: 180px; overflow-y: auto; }
+.chat-history-hd { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem; }
+.chat-history-empty { font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 0.5rem; opacity: 0.75; }
 .chat-history-item { display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.4rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; transition: background 0.15s; }
-.chat-history-item:hover, .chat-history-item.active { background: rgba(124,106,247,0.12); }
+.chat-history-item:hover, .chat-history-item.active { background: rgba(var(--primary-rgb), 0.12); }
 .chat-history-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-history-del { background: none; border: none; color: #bbb; cursor: pointer; padding: 0 0.2rem; font-size: 0.75rem; }
+.chat-history-del { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 0.2rem; font-size: 0.75rem; }
 .chat-history-del:hover { color: #e53935; }
-.chat-ctx { padding: 0.6rem 0.8rem; border-bottom: 1px solid #e0e0e0; background: #f9f9f9; display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-ctx { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); background: var(--bg-input); display: flex; flex-direction: column; gap: 0.5rem; }
 .ctx-row { display: flex; align-items: flex-start; gap: 0.5rem; }
-.ctx-label { font-size: 0.72rem; color: #888; flex-shrink: 0; padding-top: 0.2rem; min-width: 40px; }
+.ctx-label { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; padding-top: 0.2rem; min-width: 40px; }
 .ctx-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
-.ctx-empty { font-size: 0.72rem; color: #bbb; }
-.ctx-chip { background: rgba(124,106,247,0.12); color: #7c6af7; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.72rem; display: flex; align-items: center; gap: 0.2rem; }
+.ctx-empty { font-size: 0.72rem; color: var(--text-muted); opacity: 0.8; }
+.ctx-chip { background: rgba(var(--primary-rgb), 0.12); color: var(--primary); border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.72rem; display: flex; align-items: center; gap: 0.2rem; }
 .ctx-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.65rem; padding: 0; }
-.ctx-textarea { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.75rem; resize: vertical; color: #333; }
+.repair-rules { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+.repair-rule { font-size: 0.7rem; color: var(--text-sub); display: inline-flex; align-items: center; gap: 0.2rem; }
+.repair-rule input { accent-color: var(--primary); }
+.ctx-textarea { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.75rem; resize: vertical; color: var(--text-main); }
 .chat-messages { flex: 1; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.8rem; scroll-behavior: smooth; }
-.chat-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 0.6rem; color: #aaa; text-align: center; padding: 1rem; }
+.chat-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 0.6rem; color: var(--text-muted); text-align: center; padding: 1rem; }
 .welcome-icon { font-size: 2rem; opacity: 0.4; }
-.welcome-title { font-size: 1rem; font-weight: 600; color: #555; }
-.welcome-desc { font-size: 0.78rem; line-height: 1.6; }
+.welcome-title { font-size: 1rem; font-weight: 600; color: var(--text-main); }
+.welcome-desc { font-size: 0.78rem; line-height: 1.6; color: var(--text-sub); }
 .welcome-hints { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin-top: 0.4rem; }
-.hint-tag { background: rgba(124,106,247,0.1); color: #7c6af7; border-radius: 12px; padding: 0.2rem 0.7rem; font-size: 0.75rem; cursor: pointer; transition: background 0.15s; }
-.hint-tag:hover { background: rgba(124,106,247,0.2); }
+.hint-tag { background: rgba(var(--primary-rgb), 0.1); color: var(--primary); border-radius: 12px; padding: 0.2rem 0.7rem; font-size: 0.75rem; cursor: pointer; transition: background 0.15s; }
+.hint-tag:hover { background: rgba(var(--primary-rgb), 0.2); }
 .msg { display: flex; margin-bottom: 0.2rem; }
 .msg-user { justify-content: flex-end; }
 .msg-ai { justify-content: flex-start; }
 .bubble { max-width: 90%; border-radius: 12px; padding: 0.6rem 0.8rem; font-size: 0.82rem; line-height: 1.65; word-break: break-word; }
-.bubble-user { background: #7c6af7; color: #fff; border-bottom-right-radius: 3px; }
-.bubble-ai { background: #f3f3f3; color: #333; border-bottom-left-radius: 3px; border: 1px solid #e8e8e8; }
+.bubble-user { background: var(--primary); color: #fff; border-bottom-right-radius: 3px; }
+.bubble-ai { background: var(--bg-input); color: var(--text-main); border-bottom-left-radius: 3px; border: 1px solid var(--border); }
 .bubble-ai.loading { display: flex; gap: 0.3rem; align-items: center; padding: 0.8rem; }
 .ai-text { white-space: pre-wrap; font-family: inherit; font-size: 0.82rem; margin: 0; line-height: 1.65; }
 .cursor { animation: blink 1s infinite; }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #aaa; animation: bounce 1.4s infinite; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: bounce 1.4s infinite; }
 .dot:nth-child(2) { animation-delay: 0.2s; }
 .dot:nth-child(3) { animation-delay: 0.4s; }
 @keyframes bounce { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
 .msg-actions { display: flex; gap: 0.3rem; margin-top: 0.4rem; flex-wrap: wrap; }
-.act-btn { background: rgba(124,106,247,0.1); border: none; color: #7c6af7; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.7rem; cursor: pointer; transition: background 0.15s; }
-.act-btn:hover { background: rgba(124,106,247,0.22); }
-.chat-input-area { padding: 0.6rem 0.8rem; border-top: 1px solid #e0e0e0; background: #fafafa; display: flex; flex-direction: column; gap: 0.4rem; flex-shrink: 0; }
+.repair-options { margin-top: 0.45rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.repair-options-hd { font-size: 0.68rem; color: var(--text-muted); }
+.act-btn { background: rgba(var(--primary-rgb), 0.1); border: none; color: var(--primary); border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.7rem; cursor: pointer; transition: background 0.15s; }
+.act-btn:hover { background: rgba(var(--primary-rgb), 0.22); }
+.chat-input-area { padding: 0.6rem 0.8rem; border-top: 1px solid var(--border); background: var(--bg-input); display: flex; flex-direction: column; gap: 0.4rem; flex-shrink: 0; }
 .quick-cmds { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.quick-btn { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.72rem; cursor: pointer; transition: all 0.15s; }
-.quick-btn:hover:not(:disabled) { background: #f0f0f0; border-color: #7c6af7; color: #7c6af7; }
+.quick-btn { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.72rem; color: var(--text-sub); cursor: pointer; transition: all 0.15s; }
+.quick-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--primary); color: var(--primary); }
 .quick-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .input-row { display: flex; gap: 0.4rem; }
-.input { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 0.45rem 0.65rem; font-size: 0.82rem; resize: none; color: #333; font-family: inherit; line-height: 1.5; outline: none; transition: border-color 0.15s; }
-.input:focus { border-color: #7c6af7; }
-.send-btn { background: #7c6af7; border: none; color: #fff; border-radius: 8px; padding: 0 1rem; font-size: 0.82rem; cursor: pointer; transition: background 0.2s; flex-shrink: 0; min-width: 56px; }
-.send-btn:hover:not(:disabled) { background: #6c5ce7; }
+.input { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.65rem; font-size: 0.82rem; resize: none; color: var(--text-main); font-family: inherit; line-height: 1.5; outline: none; transition: border-color 0.15s; }
+.input:focus { border-color: var(--primary); }
+.send-btn { background: linear-gradient(90deg, var(--primary), var(--primary-light)); border: none; color: #fff; border-radius: 8px; padding: 0 1rem; font-size: 0.82rem; cursor: pointer; transition: opacity 0.2s; flex-shrink: 0; min-width: 56px; }
+.send-btn:hover:not(:disabled) { opacity: 0.85; }
 .send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.input-hint { font-size: 0.68rem; color: #ccc; text-align: center; }
+.input-hint { font-size: 0.68rem; color: var(--text-muted); text-align: center; opacity: 0.8; }
+.kickoff-mask { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 30; }
+.kickoff-dialog { width: min(520px, calc(100% - 24px)); background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem; box-shadow: 0 12px 36px rgba(0,0,0,0.22); }
+.kickoff-hd { font-size: 0.9rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.7rem; }
+.kickoff-grid { display: grid; gap: 0.5rem; }
+.kickoff-grid label { display: grid; gap: 0.2rem; font-size: 0.74rem; color: var(--text-muted); }
+.kickoff-input { width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border); border-radius: 7px; color: var(--text-main); padding: 0.35rem 0.5rem; font-size: 0.8rem; }
+.kickoff-input:focus { outline: none; border-color: var(--primary); }
+.kickoff-actions { margin-top: 0.75rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
 </style>

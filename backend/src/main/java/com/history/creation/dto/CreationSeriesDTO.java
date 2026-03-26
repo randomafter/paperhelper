@@ -5,19 +5,15 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class CreationWorkDTO {
+public class CreationSeriesDTO {
     private Long id;
     private Long userId;
-    private String title;
-    private String content;
     private String groupName;
     private String pinnedOutline;
     private String charProfiles;
-    private String outlineData;
     private String charProfilesJson;
     private String worldSetting;
     private String plotHooks;
-    private LocalDateTime lastOpenedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
