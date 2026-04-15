@@ -690,8 +690,13 @@ async function loadSeries(groupName) {
     const res = await seriesApi.get(groupName)
     if (res.data?.code === 200 && res.data?.data) {
       const s = res.data.data
-      // 系列档案：仅共享人物/世界观（章节大纲仍走章节级）
+      // 系列档案：共享大纲 / 人设 / 世界观 / 伏笔
+      if (s.pinnedOutline) pinnedOutline.value = s.pinnedOutline
       if (s.charProfiles) charProfiles.value = s.charProfiles
+      try {
+        const od = s.outlineData
+        if (od) outlineChapters.value = JSON.parse(od)
+      } catch(e) {}
       try {
         const cpj = s.charProfilesJson
         if (cpj) charCards.value = JSON.parse(cpj)
@@ -719,7 +724,9 @@ async function saveSeries() {
   try {
     await seriesApi.save({
       groupName,
+      pinnedOutline: pinnedOutline.value,
       charProfiles: charProfiles.value,
+      outlineData: JSON.stringify(outlineChapters.value),
       charProfilesJson: JSON.stringify(charCards.value),
       worldSetting: JSON.stringify(worldSetting.value),
       plotHooks: JSON.stringify(plotHooks.value),
@@ -1519,7 +1526,7 @@ const boundMats = ref([])
 const pinnedOutline = ref('')
 const charProfiles = ref('')
 const continueStyle = ref('典雅')
-const continueWords = ref(200)
+const continueWords = ref(2200)
 
 function removeBoundMat(mat) {
   const idx = boundMats.value.indexOf(mat)
@@ -1701,9 +1708,9 @@ function inlineAction(action) {
   
   let prompt = ''
   if (action === 'polish') {
-    prompt = `你是专业的历史文学编辑。请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本，不加任何说明：\n\n${text}`
+    prompt = `你是专业的历史古风文学编辑。请对以下文段进行深度润色，保持原意，重点提升古言意境、潜台词、心理细节与节奏层次，减少直白说明，只返回润色后的正文：\n\n${text}`
   } else if (action === 'expand') {
-    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加细节描写和环境氛围，保持风格一致，直接返回扩写后的文本：\n\n${text}`
+    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加环境氛围、动作细节与冲突阻力，避免简单顺利地化解矛盾，保持风格一致，直接返回扩写后的文本：\n\n${text}`
   } else if (action === 'rewrite') {
     prompt = `你是专业的历史文学编辑。请用不同的表达方式改写以下文段，保持原意但提升表现力，严格按以下格式返回3个方案，不要添加任何其他说明：
 ===方案1===
@@ -1781,9 +1788,9 @@ function retryInline() {
   
   let prompt = ''
   if (action === 'polish') {
-    prompt = `你是专业的历史文学编辑。请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本，不加任何说明：\n\n${text}`
+    prompt = `你是专业的历史古风文学编辑。请对以下文段进行深度润色，保持原意，重点提升古言意境、潜台词、心理细节与节奏层次，减少直白说明，只返回润色后的正文：\n\n${text}`
   } else if (action === 'expand') {
-    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加细节描写和环境氛围，保持风格一致，直接返回扩写后的文本：\n\n${text}`
+    prompt = `你是擅长历史题材的文学作家。请将以下文段扩写至原文的 1.5-2 倍长度，增加环境氛围、动作细节与冲突阻力，避免简单顺利地化解矛盾，保持风格一致，直接返回扩写后的文本：\n\n${text}`
   } else if (action === 'rewrite') {
     prompt = `你是专业的历史文学编辑。请用不同的表达方式改写以下文段，保持原意但提升表现力，严格按以下格式返回3个方案，不要添加任何其他说明：
 ===方案1===
@@ -1806,6 +1813,14 @@ function discardInline() {
   inlineResult.value.show = false
 }
 
+function parseSseDataLine(line) {
+  if (!line.startsWith('data:')) return null
+  let data = line.slice(5)
+  if (data.startsWith(' ')) data = data.slice(1)
+  if (data.endsWith('\r')) data = data.slice(0, -1)
+  return data === '' ? '\n' : data
+}
+
 // 提示词模板
 // ═══════════════════════════════════════════════════════════
 // § 12. AI 调用核心（PROMPTS + callSpark + runXxx）
@@ -1813,26 +1828,36 @@ function discardInline() {
 function buildAiSystemPrompt() {
   const outline = pinnedOutline.value?.trim()
   const chars = charProfiles.value?.trim()
-  const tail = editorContent.value?.trim().slice(-800)
+  const world = worldSettingBound.value?.trim()
+  const hooks = hooksBound.value?.trim()
+  const tail = editorContent.value?.trim().slice(-1200)
   const mats = (boundMats.value || []).slice(0, 5)
 
-  let sys = `你是历史小说创作助手。回答时必须优先使用用户绑定上下文：绑定素材、故事大纲、人物设定、编辑区内容。\n`
-  sys += `若与常识冲突，以绑定上下文为准；仅在信息不足时做最小必要补全。\n`
-  sys += `默认只输出可直接使用的内容，不要题外话。输出请使用自然分段，段间空一行；每段首行请使用两个全角空格缩进。\n\n`
+  let sys = `你是历史小说创作助手。你的目标不是堆砌素材，而是把素材转化为剧情因果、人物动作、环境细节和制度约束。
+总原则：
+1）素材融合必须“隐性渗透”，禁止逐条点名、逐条陈列素材；
+2）若素材与时代设定冲突，优先服从世界观/朝代/大纲，不得跨朝代照搬官职、礼制、称谓；
+3）对话要有潜台词与克制感，减少直白解释；
+4）冲突推进要有阻力与代价，不能一招化解；
+5）只在信息不足时做最小必要补全；
+6）默认只输出可直接使用的内容，不要题外话。输出请使用自然分段，段间空一行；每段首行请使用两个全角空格缩进。\n\n`
 
   if (mats.length) {
-    sys += '【绑定素材（最高优先级）】\n'
+    sys += '【绑定素材（需语义融合，不可堆砌）】\n'
     mats.forEach((m, i) => {
       const title = m?.title || `素材${i + 1}`
       const content = (m?.content || '').slice(0, 500)
       sys += `${i + 1}. ${title}\n${content}\n\n`
     })
+    sys += '使用规则：优先提炼素材中的制度、器物、礼法、氛围、人物处境与叙事功能，只选择最契合当前段落的少数细节自然嵌入正文。\n\n'
   }
   if (outline) sys += `【故事大纲（最高优先级）】\n${outline}\n\n`
   if (chars) sys += `【人物设定（最高优先级）】\n${chars}\n\n`
-  if (worldSettingBound.value?.trim()) sys += `【世界观/设定（最高优先级）】\n${worldSettingBound.value.trim()}\n\n`
-  if (hooksBound.value?.trim()) sys += `【未回收伏笔（必须优先呼应）】\n${hooksBound.value.trim()}\n\n`
+  if (world) sys += `【世界观/设定（最高优先级）】\n${world}\n\n`
+  if (hooks) sys += `【未回收伏笔（必须优先呼应）】\n${hooks}\n\n`
   if (tail) sys += `【编辑区末尾内容（最高优先级上下文）】\n${tail}\n\n`
+
+  sys += '写作时请在内部先判断：当前时代边界、当前主冲突、可自然融合的素材细节、人物的隐性情绪表达方式。不要输出判断过程，只输出最终正文。'
 
   return sys
 }
@@ -1873,11 +1898,13 @@ ${text}
 
   scene: (scene, style) =>
     `你是擅长历史题材的文学作家，文风${style}。
-请根据以下场景要素，生成一段150-250字的环境描写，要求：
-- 历史细节准确（器物、植物、建筑符合时代）
+请根据以下场景要素，生成一段400-700字的环境与行动描写，要求：
+- 历史细节准确（器物、植物、建筑、称谓符合时代）
 - 调动视觉、听觉、嗅觉多种感官
+- 场景细节必须服务人物情绪或后续冲突，不可堆砌
 - 语言${style}，可直接嵌入小说正文
 - 不出现现代词汇
+- 末句保留叙事张力
 
 场景要素：${scene}`,
 
@@ -1885,11 +1912,15 @@ ${text}
     `任务：长篇小说续写（高约束模式）
 
 请严格按以下要求生成：
-1）优先依据已绑定素材、大纲、人物设定、编辑区末尾上下文；
+1）优先依据已绑定素材、大纲、人物设定、世界观、伏笔与编辑区末尾上下文；
 2）与现有叙事保持同一人称、时态、语气和节奏；
-3）推进当前冲突，不跳时间线，不新增重大设定；
-4）人物行为符合既有人设与动机；
-5）生成长度约${wordCount || 200}字，风格偏${style}。
+3）围绕当前冲突持续加压，不跳时间线，不新增重大设定；
+4）冲突不可被一句话或一个动作轻易化解，至少写出试探、受阻、反制、代价中的两项；
+5）素材只能作为制度约束、器物细节、环境氛围、人物动作的来源自然渗透，禁止逐条罗列素材；
+6）若素材存在跨朝代制度/称谓冲突，以当前世界观和大纲为准，只保留可迁移信息；
+7）人物行为符合既有人设与动机；
+8）对话要有潜台词和留白，避免现代口语和过直白心理描写；
+9）生成长度约${Math.max(1800, Number(wordCount) || 2200)}-2600字，风格偏${style}。
 ${outline ? `
 【当前故事大纲（最高优先级）】
 ${outline}
@@ -1922,7 +1953,7 @@ ${text}`,
   dialogue: (chars, scene, outline) =>
     `任务：人物对话生成（贴合人设）
 
-请根据以下信息生成150-250字对话片段：
+请根据以下信息生成400-800字对话片段：
 ${outline ? `【故事大纲（最高优先级）】
 ${outline}
 ` : ''}
@@ -1934,8 +1965,9 @@ ${chars}
 要求：
 1）对话语气、用词、行为符合人设与时代；
 2）对话需推动情节或揭示关系，不空转；
-3）可少量加入动作与神态描写增强画面；
-4）只输出可直接入文的正文。`,
+3）多用潜台词、停顿、动作、视线、景物映衬，减少直白说理；
+4）若存在权力压迫或利益博弈，必须体现试探与回锋；
+5）只输出可直接入文的正文。`,
 
   outline: (story) =>
     `任务：连载分章大纲生成（可执行）
@@ -2031,26 +2063,24 @@ async function callSpark(prompt, tabKey) {
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
       for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed.startsWith('data:')) {
-          const data = trimmed.slice(5).trim()
-          if (data === '[DONE]') {
-            if (isInline) {
-              const raw = inlineResult.value.text
-              const parts = raw.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
-              inlineOptions.value = parts.length > 1 ? parts : []
-              inlineLoading.value = false
-            } else {
-              if (aiResult.value) saveToHistory(tabKey, prompt, aiResult.value)
-              aiLoading.value = false
-            }
-            return
-          }
+        const data = parseSseDataLine(line)
+        if (data == null) continue
+        if (data === '[DONE]') {
           if (isInline) {
-            inlineResult.value.text += data
+            const raw = inlineResult.value.text
+            const parts = raw.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
+            inlineOptions.value = parts.length > 1 ? parts : []
+            inlineLoading.value = false
           } else {
-            aiResult.value += data
+            if (aiResult.value) saveToHistory(tabKey, prompt, aiResult.value)
+            aiLoading.value = false
           }
+          return
+        }
+        if (isInline) {
+          inlineResult.value.text += data
+        } else {
+          aiResult.value += data
         }
       }
     }
@@ -2095,7 +2125,13 @@ function runScene() {
 }
 function runPolish() {
   if (!polishText.value.trim()) { aiError.value = '请输入要润色的文段'; return }
-  const prompt = `你是专业的历史文学编辑，请对以下文段进行润色，保持原意，提升文学性和流畅度，语言典雅，直接返回润色后的文本：\n\n${polishText.value.trim()}`
+  const prompt = `你是专业的历史古风文学编辑，请对以下文段进行深度润色。
+要求：
+1）保持原意和事件顺序不变；
+2）重点提升古言意境、潜台词、心理描写细腻度与节奏层次；
+3）减少直白表述，增加含蓄、留白、景物映衬；
+4）若涉及时代称谓、礼制、器物，请保持与已绑定设定一致；
+5）只返回润色后的正文，不要解释。\n\n${polishText.value.trim()}`
   callSpark(prompt, 'polish')
 }
 function runContinue() {

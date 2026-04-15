@@ -71,11 +71,13 @@ public class CreationWorkController {
     @PutMapping("/{id}/group")
     public Result<CreationWorkDTO> updateGroup(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, Object> body) {
         Long userId = SecurityUtils.getCurrentUserId();
-        String groupName = body.get("groupName");
+        String groupName = body.get("groupName") instanceof String ? (String) body.get("groupName") : null;
+        Boolean syncSeriesSettings = body.get("syncSeriesSettings") instanceof Boolean
+                ? (Boolean) body.get("syncSeriesSettings") : null;
         try {
-            return Result.ok(workService.updateGroup(userId, id, groupName));
+            return Result.ok(workService.updateGroup(userId, id, groupName, syncSeriesSettings));
         } catch (RuntimeException e) {
             return Result.fail(400, e.getMessage());
         }

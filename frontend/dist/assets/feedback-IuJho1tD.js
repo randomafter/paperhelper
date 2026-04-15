@@ -1,0 +1,1 @@
+import{A as t}from"./index-CARjSZiU.js";const r={submitFeedback(e){return t.post("/feedback/submit",e)},getAllFeedback(){return t.get("/feedback/all")},getFeedbackByStatus(e){return t.get(`/feedback/status/${e}`)},markAsRead(e){return t.post(`/feedback/${e}/read`)},markAsResolved(e){return t.post(`/feedback/${e}/resolved`)}};export{r as f};

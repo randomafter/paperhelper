@@ -1,0 +1,1 @@
+import{A as t}from"./index-CARjSZiU.js";const o={list(){return t.get("/notifications")},unreadCount(){return t.get("/notifications/unread-count")},markRead(n){return t.post(`/notifications/${n}/read`)},markAllRead(){return t.post("/notifications/read-all")}};export{o as n};

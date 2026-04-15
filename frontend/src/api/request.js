@@ -15,7 +15,9 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const requestUrl = err.config?.url || ''
+    const isAuthEndpoint = requestUrl.startsWith('/auth/')
+    if (err.response?.status === 401 && !isAuthEndpoint) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'

@@ -123,11 +123,15 @@ public class SparkController {
 
     private String buildPromptWithMaterials(String prompt, Long materialId, List<Long> materialIds) {
         StringBuilder sb = new StringBuilder();
+        boolean hasMaterials = false;
         if (materialId != null) {
             try {
                 MaterialDTO mat = materialService.getMaterialById(materialId, null);
-                if (mat != null) sb.append("【参考素材】\n标题：").append(mat.getTitle())
-                        .append("\n内容：").append(mat.getContent()).append("\n\n");
+                if (mat != null) {
+                    hasMaterials = true;
+                    sb.append("【参考素材】\n标题：").append(mat.getTitle())
+                            .append("\n内容：").append(mat.getContent()).append("\n\n");
+                }
             } catch (Exception ignored) {}
         }
         if (materialIds != null && !materialIds.isEmpty()) {
@@ -135,10 +139,18 @@ public class SparkController {
             for (Long id : materialIds) {
                 try {
                     MaterialDTO mat = materialService.getMaterialById(id, null);
-                    if (mat != null) sb.append("【参考素材").append(idx++).append("】\n标题：")
-                            .append(mat.getTitle()).append("\n内容：").append(mat.getContent()).append("\n\n");
+                    if (mat != null) {
+                        hasMaterials = true;
+                        sb.append("【参考素材").append(idx++).append("】\n标题：")
+                                .append(mat.getTitle()).append("\n内容：").append(mat.getContent()).append("\n\n");
+                    }
                 } catch (Exception ignored) {}
             }
+        }
+        if (hasMaterials) {
+            sb.append("【素材使用规则】\n")
+                    .append("请先理解素材中的时代背景、制度关系、器物细节与叙事功能，只选最契合当前情节的少数细节自然渗透到正文中。\n")
+                    .append("禁止逐条罗列素材内容，禁止把素材写成展品式说明。若素材之间存在跨朝代官职、称谓或制度冲突，以当前故事世界观和主情节为准，只保留可迁移的信息。\n\n");
         }
         sb.append(prompt);
         return sb.toString();
@@ -146,15 +158,16 @@ public class SparkController {
 
     private String buildSystemPromptForChat(String userContext, List<Long> materialIds) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一位历史题材创作助手。回答时必须优先使用用户绑定上下文：素材、大纲、人物设定、编辑区内容。\n");
-        sb.append("若绑定上下文与常识冲突，以绑定上下文为准；仅在信息不足时做最小必要补全。\n");
+        sb.append("你是一位历史题材创作助手，必须同时做好素材理解、时代校验、人物动机控制、冲突递进与文学表达。\n");
+        sb.append("总原则：素材只能自然渗透为场景细节、制度约束、人物行为和情节因果，禁止展品式罗列；若素材与时代设定冲突，优先服从当前世界观与主情节，不得跨朝代照搬官职、称谓、礼制。\n");
+        sb.append("对话要有潜台词和留白，冲突解决必须体现阻力、试探、反制或代价，不能轻易化解。\n");
         sb.append("最终回复只输出可直接使用的正文内容，不要解释、不要前言、不要题外话。\n\n");
         if (materialIds != null && !materialIds.isEmpty()) {
             int idx = 1;
             for (Long id : materialIds) {
                 try {
                     MaterialDTO mat = materialService.getMaterialById(id, null);
-                    if (mat != null) sb.append("【参考素材").append(idx++).append("（最高优先级）】\n")
+                    if (mat != null) sb.append("【参考素材").append(idx++).append("（需语义融合）】\n")
                             .append("标题：").append(mat.getTitle()).append("\n")
                             .append("内容：").append(mat.getContent()).append("\n\n");
                 } catch (Exception ignored) {}

@@ -90,6 +90,9 @@
         </div>
         <div v-else-if="msg.role === 'assistant'" class="msg msg-ai">
           <div class="bubble bubble-ai">
+            <div v-if="msg.streaming && !msg.content" class="ai-thinking">
+              正在思考中<span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            </div>
             <pre class="ai-text">{{ msg.content }}<span v-if="msg.streaming" class="cursor">▋</span></pre>
             <div v-if="!msg.streaming" class="msg-actions">
               <button @click="accept(msg, 'append')" class="act-btn">↓ 插入</button>
@@ -157,7 +160,7 @@ const props = defineProps({
   plotHooks: { type: String, default: '' },
   editorContent: { type: String, default: '' },
   styleName: { type: String, default: '典雅' },
-  words: { type: Number, default: 200 },
+  words: { type: Number, default: 2200 },
 })
 
 const emit = defineEmits(['update:outline', 'update:chars', 'accept-msg', 'update:boundMats', 'collapse'])
@@ -198,34 +201,59 @@ const quickCmds = [
   { key: 'kickoff',  icon: '🚀', label: '5问立项' },
 ]
 
+function targetWordRange(baseWords) {
+  const base = Number(baseWords) || 2000
+  const min = Math.max(1200, Math.round(base * 0.9))
+  const max = Math.max(min + 200, Math.round(base * 1.15))
+  return `${min}-${max}`
+}
+
 function buildSystemPrompt() {
   const hasOutline = !!props.outline?.trim()
   const hasChars = !!props.chars?.trim()
-  const tail = props.editorContent?.trim().slice(-600) || ''
+  const hasWorld = !!props.worldSetting?.trim()
+  const hasHooks = !!props.plotHooks?.trim()
+  const tail = props.editorContent?.trim().slice(-1000) || ''
   const mats = (props.boundMats || []).slice(0, 5)
 
-  let sys = `你是历史小说创作助手。回答时必须优先使用用户绑定上下文：素材、大纲、人物设定、编辑区内容。
-若绑定上下文与常识冲突，以绑定上下文为准。
-仅当绑定信息不足时，才做最小必要补全。
-最终回复只输出可直接使用的正文内容，不要解释、不要前言、不要题外话。
-输出请使用自然分段，段间空一行；每段首行使用两个全角空格缩进。
-\n`
+  let sys = `你是历史小说创作助手，必须把“素材理解、时代考据、人物动机、冲突递进、文学表达”同时做好，而不是只把素材名称堆进正文。
+写作总原则：
+1. 素材只能在“人物行为、场景细节、制度约束、情节因果”里自然消化，禁止把素材做成展品式罗列；
+2. 若多条素材存在时代、制度、称谓冲突，必须先判断哪条与当前世界观/朝代更一致，冲突素材只保留其可迁移的抽象信息，不可直接照搬名词；
+3. 对话要含蓄、有潜台词，少直白解释，多通过动作、停顿、神态、景物映衬人物心绪；
+4. 冲突推进必须有博弈过程，不能一招化解，至少体现试探、压迫、反制或代价；
+5. 若信息不足，只做最小必要补全，不新增重大设定；
+6. 最终回复只输出可直接使用的正文，不要解释、不要前言、不要题外话。
+输出要求：自然分段，段间空一行；每段首行两个全角空格缩进。
+
+`
 
   if (mats.length) {
-    sys += '【绑定素材（最高优先级）】\n'
+    sys += '【绑定素材（需语义融合，不可堆砌）】\n'
     mats.forEach((m, i) => {
       const title = m?.title || `素材${i + 1}`
       const content = (m?.content || '').slice(0, 500)
       sys += `${i + 1}. ${title}\n${content}\n\n`
     })
+    sys += '使用规则：优先提炼素材中的“制度、器物、礼法、氛围、人物处境、叙事功能”，只选最适合当前情节的1-3个细节点自然渗透到正文，不要逐条点名使用。\n\n'
   }
   if (hasOutline) sys += `【故事大纲（最高优先级）】\n${props.outline.trim()}\n\n`
   if (hasChars) sys += `【人物设定（最高优先级）】\n${props.chars.trim()}\n\n`
-  if (props.worldSetting?.trim()) sys += `【世界观/设定（最高优先级）】\n${props.worldSetting.trim()}\n\n`
-  if (props.plotHooks?.trim()) sys += `【未回收伏笔（必须优先呼应）】\n${props.plotHooks.trim()}\n\n`
+  if (hasWorld) sys += `【世界观/时代设定（最高优先级）】\n${props.worldSetting.trim()}\n\n`
+  if (hasHooks) sys += `【未回收伏笔（必须优先呼应）】\n${props.plotHooks.trim()}\n\n`
   if (tail) sys += `【编辑区末尾内容（最高优先级上下文）】\n${tail}\n\n`
 
+  sys += '写作时请先在内部完成四步判断：① 当前朝代/制度边界；② 本段主冲突与阻力；③ 哪些素材值得隐性融合；④ 人物情绪应如何通过含蓄表达显现。不要输出这四步，只输出最终正文。'
+
   return sys
+}
+
+function parseSseDataLine(line) {
+  if (!line.startsWith('data:')) return null
+  let data = line.slice(5)
+  if (data.startsWith(' ')) data = data.slice(1)
+  if (data.endsWith('\r')) data = data.slice(0, -1)
+  return data === '' ? '\n' : data
 }
 
 function scroll() {
@@ -277,9 +305,8 @@ async function runConsistencyRepair(draft, userDemand, validIds) {
     const lines = buffer.split('\n')
     buffer = lines.pop() ?? ''
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
+      const data = parseSseDataLine(line)
+      if (data == null) continue
       if (data === '[DONE]') {
         const all = fixed.trim() || draft
         const options = all.split(/===方案\d+===/).map(s => s.trim()).filter(Boolean)
@@ -362,7 +389,7 @@ async function send(payload = '') {
     .map(m => Number(m.id))
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 120000)
+  const timeout = setTimeout(() => controller.abort(), 180000)
 
   try {
     const response = await fetch('/api/spark/stream/chat', {
@@ -394,9 +421,8 @@ async function send(payload = '') {
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
       for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed.startsWith('data:')) continue
-        const data = trimmed.slice(5).trim()
+        const data = parseSseDataLine(line)
+        if (data == null) continue
         if (data === '[DONE]') {
           doneReceived = true
           break
@@ -406,14 +432,7 @@ async function send(payload = '') {
       await nextTick(); scroll()
     }
 
-    try {
-      const repaired = await runConsistencyRepair(aiMsg.content, text, validIds)
-      aiMsg.content = formatNovelParagraphs(repaired.content)
-      if (repaired.options?.length > 1) aiMsg.repairOptions = repaired.options.map(formatNovelParagraphs)
-    } catch (_) {
-      aiMsg.content = formatNovelParagraphs(aiMsg.content)
-    }
-
+    aiMsg.content = formatNovelParagraphs(aiMsg.content)
     saveSession()
     await nextTick(); scroll()
   } catch (e) {
@@ -436,15 +455,15 @@ function quickCmd(cmd) {
   const map = {
     continue: {
       display: '请续写下一段',
-      prompt: `任务：长篇小说续写（高约束）\n\n请严格依据已绑定素材、大纲、人物、世界观、伏笔与编辑区末尾上下文续写。\n要求：\n1）保持同一人称/时态/语气；\n2）推进当前冲突，不跳时间线；\n3）不新增重大设定；\n4）生成长度约${props.words}字，风格偏${props.styleName}；\n5）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n6）仅输出可直接接在正文后的连续文本。`
+      prompt: `任务：长篇小说续写（高约束）\n\n请严格依据已绑定素材、大纲、人物、世界观、伏笔与编辑区末尾上下文续写。\n要求：\n1）保持同一人称/时态/语气；\n2）围绕当前主冲突持续加压，不能一步化解危机，至少写出一次试探、一次受阻、一次反制或代价；\n3）素材只能作为细节与因果来源自然渗透，禁止逐条罗列素材名词；\n4）若出现跨朝代制度/称谓冲突，以当前世界观和朝代设定为准，只保留可迁移信息；\n5）对话要含蓄克制，增加潜台词、动作、神态、景物映衬；\n6）生成长度约${targetWordRange(props.words)}字，风格偏${props.styleName}；\n7）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n8）仅输出可直接接在正文后的连续文本。`
     },
     generate: {
       display: '请生成剧情',
-      prompt: `任务：小说剧情生成（高约束）\n\n请基于当前已绑定上下文（素材、大纲、人物、世界观、伏笔）生成一段可直接入文的剧情正文。\n要求：\n1）优先呼应未回收伏笔并推动主线；\n2）人物行为符合人设与动机；\n3）历史细节与世界观一致；\n4）生成长度900-1100字；\n5）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n6）只输出正文，不要标题、不要说明。`
+      prompt: `任务：小说剧情生成（高约束）\n\n请基于当前已绑定上下文（素材、大纲、人物、世界观、伏笔）生成一段可直接入文的剧情正文。\n要求：\n1）先判断时代边界与制度边界，避免跨朝代官职、礼制、称谓混用；\n2）优先呼应未回收伏笔并推动主线；\n3）人物行为必须符合人设与动机，不能为了推进剧情强行转折；\n4）冲突解决不能过快，需体现博弈、阻力与代价；\n5）素材融合采用“渗透式写法”，最多选择最适合情节的少数细节自然嵌入；\n6）生成长度${targetWordRange(props.words)}字；\n7）输出按自然段组织，段间空一行；每段首行两个全角空格缩进；\n8）只输出正文，不要标题、不要说明。`
     },
     scene: {
       display: '请生成历史场景',
-      prompt: `任务：场景生成（可直接入文）\n\n请基于已绑定素材和世界观，生成一段150-250字历史场景：\n- 风格：${props.styleName}\n- 至少包含两种感官描写\n- 细节符合时代背景\n- 末句保留叙事张力\n\n只输出场景正文。`
+      prompt: `任务：场景生成（可直接入文）\n\n请基于已绑定素材和世界观，生成一段400-700字历史场景：\n- 风格：${props.styleName}\n- 至少包含两种感官描写\n- 细节符合时代背景，避免跨朝代器物/称谓误用\n- 场景中的器物、礼制、氛围要自然服务人物情绪或剧情，不可堆砌\n- 末句保留叙事张力\n\n只输出场景正文。`
     },
   }
   const payload = map[cmd.key]
@@ -585,6 +604,7 @@ watch(repairRules, (val) => {
 .bubble { max-width: 90%; border-radius: 12px; padding: 0.6rem 0.8rem; font-size: 0.82rem; line-height: 1.65; word-break: break-word; }
 .bubble-user { background: var(--primary); color: #fff; border-bottom-right-radius: 3px; }
 .bubble-ai { background: var(--bg-input); color: var(--text-main); border-bottom-left-radius: 3px; border: 1px solid var(--border); }
+.ai-thinking { font-size: 0.76rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.25rem; }
 .bubble-ai.loading { display: flex; gap: 0.3rem; align-items: center; padding: 0.8rem; }
 .ai-text { white-space: pre-wrap; font-family: inherit; font-size: 0.82rem; margin: 0; line-height: 1.65; }
 .cursor { animation: blink 1s infinite; }

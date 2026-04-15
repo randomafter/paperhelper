@@ -1,6 +1,6 @@
 spring:
   application:
-    name: history-creation-backend
+    name: history-novel-ai-assistant-backend
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/history_creation?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectionCollation=utf8mb4_unicode_ci
     username: root
@@ -28,9 +28,9 @@ jwt:
 
 # 讯飞星火大模型（HTTP接口）
 spark:
-  app-id: ca8279b2
-  api-key: xEcMmGZZABmuDnywKmvA:PBaGFyyZGLZeucaahpkM
-  api-secret: YjkzYjcyYWYxNmVmMGRhNzY2YjYwMjFm
+  app-id: 1e0f57e5
+  api-key: gXOfoaXTxEmNDnBgHPho:hdVQMoObHfORkbdStaLb
+  api-secret: ZGY1MTk1OGRiNGlzMmQxNDZkYzM4MzRh
   # HTTP接口地址（Spark X2）
   api-url: https://spark-api-open.xf-yun.com/x2/chat/completions
   # 模型版本
@@ -38,4 +38,4 @@ spark:
   # 最大token数
   max-tokens: 8192
   # 超时秒数
-  timeout-seconds: 60
+  timeout-seconds: 120

@@ -37,14 +37,15 @@ public class UserService {
         if (userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())) != null) {
             throw new RuntimeException("用户名已存在");
         }
-        if (req.getEmail() != null && !req.getEmail().isBlank()
-                && userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, req.getEmail())) != null) {
+        String email = (req.getEmail() == null || req.getEmail().isBlank()) ? null : req.getEmail().trim();
+        if (email != null
+                && userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email)) != null) {
             throw new RuntimeException("邮箱已被注册");
         }
         User user = new User();
         user.setUsername(req.getUsername());
         user.setPassword(passwordEncoder.encode(req.getPassword()));
-        user.setEmail(req.getEmail());
+        user.setEmail(email);
         user.setNickname(req.getNickname() != null ? req.getNickname() : req.getUsername());
         user.setSecurityQuestion(req.getSecurityQuestion());
         user.setSecurityAnswer(req.getSecurityAnswer());

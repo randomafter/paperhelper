@@ -13,8 +13,8 @@ export const worksApi = {
   save(id, data) {
     return request.put(`/works/${id}`, data)
   },
-  updateGroup(id, groupName) {
-    return request.put(`/works/${id}/group`, { groupName })
+  updateGroup(id, groupName, options = {}) {
+    return request.put(`/works/${id}/group`, { groupName, ...options })
   },
   delete(id) {
     return request.delete(`/works/${id}`)

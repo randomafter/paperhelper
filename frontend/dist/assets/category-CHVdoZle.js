@@ -1,0 +1,1 @@
+import{A as t}from"./index-CARjSZiU.js";const s={list(){return t.get("/categories")},create(e){return t.post("/categories",e)},update(e,r){return t.put(`/categories/${e}`,r)},remove(e){return t.delete(`/categories/${e}`)}};export{s as categoryApi};

@@ -1,7 +1,7 @@
 <template>
   <div class="home">
     <div class="home-hero">
-      <h1 class="home-title">历史特色创作平台</h1>
+      <h1 class="home-title">历史小说智能创作助手</h1>
       <p class="home-sub">检索历史素材，AI 辅助创作，沉浸历史世界</p>
     </div>
     <div class="home-cards">

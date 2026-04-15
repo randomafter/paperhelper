@@ -1,0 +1,1 @@
+import{E as i,h as o}from"./index-CARjSZiU.js";const p=i("workspace",()=>{const l=o(""),e=o(null),t=o(null);function u(n){e.value=n}function a(){e.value=null}function r(n){t.value=n}function s(){t.value=null}function c(n){l.value=n}return{content:l,pendingInsert:e,pendingAI:t,insertMaterial:u,clearPending:a,applyToAI:r,clearPendingAI:s,setContent:c}},{persist:!1});export{p as u};

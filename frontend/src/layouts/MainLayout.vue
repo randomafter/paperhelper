@@ -4,7 +4,7 @@
       <div class="header-inner">
         <div class="header-left">
           <router-link to="/" class="logo">
-            <span class="logo-text">历史创作台</span>
+            <span class="logo-text">历史小说智能创作助手</span>
           </router-link>
         </div>
         <div class="header-right">

@@ -1,7 +1,7 @@
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <h1>历史特色创作平台</h1>
+      <h1>历史小说智能创作助手</h1>
       <p class="subtitle">登录</p>
       <form @submit.prevent="onSubmit">
         <input v-model="form.username" type="text" placeholder="用户名" required />

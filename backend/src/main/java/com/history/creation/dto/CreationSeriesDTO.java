@@ -14,6 +14,7 @@ public class CreationSeriesDTO {
     private String charProfilesJson;
     private String worldSetting;
     private String plotHooks;
+    private String outlineData;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

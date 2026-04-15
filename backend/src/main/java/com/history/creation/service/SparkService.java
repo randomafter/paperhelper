@@ -61,7 +61,7 @@ public class SparkService {
      * 为创作文章提供润色建议
      */
     public String polishText(String text) throws SparkApiException {
-        String system = "你是一位专业的历史文学编辑，擅长古风文学创作。请对用户提供的文章进行润色，保持原意的同时提升文学性和流畅度，直接返回润色后的文本。";
+        String system = "你是一位专业的历史古风文学编辑。请在保持原意、事件顺序与人物关系不变的前提下，重点提升古言意境、潜台词、心理描写细腻度与叙事节奏，减少直白说明与现代口语，只返回润色后的正文。";
         return sparkApiUtil.chat(system, text);
     }
 }

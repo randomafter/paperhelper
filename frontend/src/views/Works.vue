@@ -118,6 +118,25 @@
       </div>
     </div>
 
+    <!-- 移动后设定处理确认 -->
+    <div v-if="showMoveSettingConfirm && movingWork" class="modal-overlay" @click.self="cancelMoveSettingConfirm">
+      <div class="confirm-modal">
+        <h3>同步目标组设定？</h3>
+        <p style="color:var(--text-sub);line-height:1.7;margin:0 0 1rem">
+          你正将作品「{{ movingWork.title || '未命名' }}」移动到分组「<strong>{{ moveTargetGroup }}</strong>」。
+        </p>
+        <p style="color:var(--text-sub);line-height:1.7;margin:0 0 1rem">
+          是否同步切换为目标组的世界观 / 人物档案 / 伏笔等组内设定？
+        </p>
+        <div class="confirm-actions" style="gap:0.75rem;flex-wrap:wrap">
+          <button @click="confirmMoveWithSettings(false)" class="btn-cancel" :disabled="movingGroupLoading">保留当前作品设定</button>
+          <button @click="confirmMoveWithSettings(true)" class="btn-confirm-del" :disabled="movingGroupLoading">
+            {{ movingGroupLoading ? '移动中...' : '同步目标组设定' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 重命名分组 -->
     <div v-if="editingGroup" class="modal-overlay" @click.self="editingGroup = null">
       <div class="confirm-modal"><h3>重命名分组</h3>
@@ -165,6 +184,8 @@ const groupOpError = ref('')
 const movingWork = ref(null)
 const movingGroupLoading = ref(false)
 const moveGroupError = ref('')
+const moveTargetGroup = ref(null)
+const showMoveSettingConfirm = ref(false)
 
 const groupList = computed(() => {
   const set = new Set(['全部', '未分组'])
@@ -246,6 +267,8 @@ function goPage(p) {
 
 function openMoveGroup(work) {
   moveGroupError.value = ''
+  moveTargetGroup.value = null
+  showMoveSettingConfirm.value = false
   movingWork.value = work
 }
 
@@ -253,21 +276,55 @@ async function doMoveGroup(targetGroup) {
   if (!movingWork.value) return
   const groupName = targetGroup === '未分组' ? null : targetGroup
   if (groupName === movingWork.value.groupName || (targetGroup === '未分组' && !movingWork.value.groupName)) {
-    movingWork.value = null; return
+    movingWork.value = null
+    moveTargetGroup.value = null
+    showMoveSettingConfirm.value = false
+    return
   }
-  movingGroupLoading.value = true; moveGroupError.value = ''
+
+  if (groupName) {
+    moveTargetGroup.value = groupName
+    showMoveSettingConfirm.value = true
+    return
+  }
+
+  await submitMoveGroup(null, false)
+}
+
+function cancelMoveSettingConfirm() {
+  showMoveSettingConfirm.value = false
+  moveTargetGroup.value = null
+}
+
+async function confirmMoveWithSettings(syncSeriesSettings) {
+  await submitMoveGroup(moveTargetGroup.value, syncSeriesSettings)
+}
+
+async function submitMoveGroup(groupName, syncSeriesSettings) {
+  if (!movingWork.value) return
+  movingGroupLoading.value = true
+  moveGroupError.value = ''
   try {
-    const res = await worksApi.updateGroup(movingWork.value.id, groupName)
+    const res = await worksApi.updateGroup(movingWork.value.id, groupName, { syncSeriesSettings })
     if (res.data?.code === 200) {
       movingWork.value.groupName = groupName
+      movingWork.value.pinnedOutline = res.data.data?.pinnedOutline
+      movingWork.value.charProfiles = res.data.data?.charProfiles
+      movingWork.value.charProfilesJson = res.data.data?.charProfilesJson
+      movingWork.value.worldSetting = res.data.data?.worldSetting
+      movingWork.value.plotHooks = res.data.data?.plotHooks
       movingWork.value = null
+      moveTargetGroup.value = null
+      showMoveSettingConfirm.value = false
     } else {
       moveGroupError.value = res.data?.message || '移动失败'
     }
   } catch(e) {
     moveGroupError.value = e.response?.data?.message || '移动失败'
     console.error(e)
-  } finally { movingGroupLoading.value = false }
+  } finally {
+    movingGroupLoading.value = false
+  }
 }
 
 function createGroup() {

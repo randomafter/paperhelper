@@ -2,7 +2,7 @@
   <div class="auth-page">
     <div class="auth-card">
       <div class="card-header">
-        <h1>历史特色创作</h1>
+        <h1>历史小说智能创作助手</h1>
         <p class="subtitle">创建新账户</p>
       </div>
 

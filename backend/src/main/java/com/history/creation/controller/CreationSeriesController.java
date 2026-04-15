@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/series")
+@RequestMapping("/series")
 @RequiredArgsConstructor
 public class CreationSeriesController {
 
@@ -31,12 +31,13 @@ public class CreationSeriesController {
         String groupName      = body.get("groupName");
         String pinnedOutline  = body.get("pinnedOutline");
         String charProfiles   = body.get("charProfiles");
+        String outlineData    = body.get("outlineData");
         String charProfilesJson = body.get("charProfilesJson");
         String worldSetting   = body.get("worldSetting");
         String plotHooks      = body.get("plotHooks");
         try {
             return Result.ok(seriesService.save(userId, groupName,
-                    pinnedOutline, charProfiles,
+                    pinnedOutline, charProfiles, outlineData,
                     charProfilesJson, worldSetting, plotHooks));
         } catch (RuntimeException e) {
             return Result.fail(400, e.getMessage());
